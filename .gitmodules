@@ -1,0 +1,9 @@
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "external/fmt"]
+	path = external/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "external/cxxopts"]
+	path = external/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git

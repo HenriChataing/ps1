@@ -153,9 +153,6 @@ void eval_JALR(uint32_t instr) {
     state.cpu.gpr[rd] = state.cpu.pc + 8;
     state.cpu_state = cpu_state::Delay;
     state.jump_address = tg;
-
-    if (tg == UINT32_C(0xa00005e0))
-        psx::halt("JALR C0[]");
 }
 
 void eval_JR(uint32_t instr) {
@@ -163,9 +160,6 @@ void eval_JR(uint32_t instr) {
     uint32_t tg = state.cpu.gpr[rs];
     state.cpu_state = cpu_state::Delay;
     state.jump_address = tg;
-
-    if (tg == UINT32_C(0xa00005e0))
-        psx::halt("JR C0[]");
 }
 
 void eval_MFHI(uint32_t instr) {
@@ -535,10 +529,6 @@ void eval_CACHE(uint32_t instr) {
 
 void eval_COP1(uint32_t instr) {
     take_exception(CoprocessorUnusable, 0, false, false, 1);
-}
-
-void eval_COP2(uint32_t instr) {
-    take_exception(CoprocessorUnusable, 0, false, false, 2);
 }
 
 void eval_COP3(uint32_t instr) {

@@ -8,7 +8,7 @@
 Debugger debugger::debugger;
 
 char const *debugger::LabelName[Debugger::Label::LabelCount] = {
-    "cpu", "cop0", "mem", "int", "timer", "dma", "gpu"
+    "cpu", "cop0", "cop2", "mem", "joy", "int", "timer", "dma", "cdrom", "gpu"
 };
 
 fmt::text_style debugger::VerbosityStyle[] = {
@@ -30,16 +30,16 @@ Debugger::Debugger()
 
     color[Debugger::CPU] = fmt::color::cadet_blue;
     color[Debugger::COP0] = fmt::color::aquamarine;
+    color[Debugger::COP2] = fmt::color::dark_orange;
     color[Debugger::MC] = fmt::color::blue_violet;
+    color[Debugger::JC] = fmt::color::green_yellow;
     color[Debugger::IC] = fmt::color::chartreuse;
     color[Debugger::Timer] = fmt::color::midnight_blue;
     color[Debugger::DMA] = fmt::color::medium_sea_green;
+    color[Debugger::CDROM] = fmt::color::medium_orchid;
     color[Debugger::GPU] = fmt::color::deep_pink;
 
 #if 0
-    color[Debugger::SP] = fmt::color::medium_orchid;
-    color[Debugger::DPCommand] = fmt::color::green_yellow;
-    color[Debugger::DPSpan] = fmt::color::dark_orange;
     color[Debugger::MI] = fmt::color::golden_rod;
     color[Debugger::VI] = fmt::color::medium_slate_blue;
     color[Debugger::AI] = fmt::color::coral;

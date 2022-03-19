@@ -7,6 +7,15 @@
 
 namespace psx::hw {
 
+void read_joy_data(uint32_t *val);
+void read_joy_stat(uint32_t *val);
+void read_joy_mode(uint32_t *val);
+void read_joy_ctrl(uint32_t *val);
+void read_joy_baud(uint32_t *val);
+void write_joy_mode(uint16_t val);
+void write_joy_ctrl(uint16_t val);
+void write_joy_baud(uint16_t val);
+
 #define I_STAT_SPU      (UINT32_C(1) << 9)
 #define I_STAT_SIO      (UINT32_C(1) << 8)
 #define I_STAT_CTRL     (UINT32_C(1) << 7)
@@ -37,6 +46,14 @@ void write_d6_chcr(uint32_t val);
 void write_dx_chcr(int channel, uint32_t val);
 void write_dpcr(uint32_t val);
 void write_dicr(uint32_t val);
+
+void read_cdrom_index(uint32_t *val);
+void write_cdrom_index(uint8_t val);
+void read_cdrom_reg01(uint32_t *val);
+void write_cdrom_reg01(uint8_t val);
+void read_cdrom_reg03(uint32_t *val);
+void write_cdrom_reg03(uint8_t val);
+void write_cdrom_reg02(uint8_t val);
 
 void read_gpuread(uint32_t *val);
 void read_gpustat(uint32_t *val);

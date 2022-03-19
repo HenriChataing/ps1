@@ -69,7 +69,7 @@ static void update_frame_buffer() {
     size_t color_depth = state.gpu.display_area_color_depth ? 24 : 16;
     size_t height = state.gpu.vertical_resolution ? 480 : 240;
     size_t width;
-    size_t stride = 2048;
+    size_t stride = 1024;
 
     switch (state.gpu.horizontal_resolution) {
     case 0x0: width = 256; break;
@@ -936,6 +936,7 @@ void hblank_event() {
         hw::set_i_stat(I_STAT_VBLANK);
     }
 
+    refreshVideoImage();
     state.schedule_event(cpu_clock + delay, hblank_event);
 }
 

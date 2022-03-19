@@ -24,10 +24,13 @@ public:
     enum Label {
         CPU,
         COP0,
+        COP2,
         MC,
+        JC,
         IC,
         Timer,
         DMA,
+        CDROM,
         GPU,
         LabelCount,
     };

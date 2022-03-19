@@ -89,6 +89,7 @@ HW_OBJS := \
     $(OBJDIR)/src/psx/state.o \
     $(OBJDIR)/src/psx/memory.o \
     $(OBJDIR)/src/psx/hw.o \
+    $(OBJDIR)/src/psx/cdrom.o \
     $(OBJDIR)/src/psx/gpu.o \
     $(OBJDIR)/src/psx/core.o
 
@@ -107,6 +108,7 @@ OBJS      := \
     $(OBJDIR)/src/debugger.o \
     $(OBJDIR)/src/interpreter/cpu.o \
     $(OBJDIR)/src/interpreter/cp0.o \
+    $(OBJDIR)/src/interpreter/cp2.o \
     $(OBJDIR)/src/assembly/disassembler.o
 
 DEPS      := $(patsubst %.o,%.d,$(OBJS))

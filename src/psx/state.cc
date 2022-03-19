@@ -58,7 +58,8 @@ void state::reset() {
     cp0.prid = UINT32_C(0x00000002);
     cp0.sr   = STATUS_BEV | STATUS_TS;
 
-    hw.dpcr  = UINT32_C(0x07654321);
+    hw.dpcr     = UINT32_C(0x07654321);
+    cdrom.index = UINT8_C(0x18);
 
     // Setup initial action.
     cycles = 0;

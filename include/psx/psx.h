@@ -94,6 +94,85 @@ struct cp0_registers {
     inline uint32_t IP()   { return (cause >> 8) & 0xfflu; }
 };
 
+struct cp2_registers {
+    // Data Registers.
+    union {
+        struct {
+        uint32_t vxy0;
+        uint32_t vz0;
+        uint32_t vxy1;
+        uint32_t vz1;
+        uint32_t vxy2;
+        uint32_t vz2;
+        uint32_t rgbc;
+        uint32_t otz;
+        uint32_t ir0;
+        uint32_t ir1;
+        uint32_t ir2;
+        uint32_t ir3;
+        uint32_t sxy0;
+        uint32_t sxy1;
+        uint32_t sxy2;
+        uint32_t sxyp;
+        uint32_t sz0;
+        uint32_t sz1;
+        uint32_t sz2;
+        uint32_t sz3;
+        uint32_t rgb0;
+        uint32_t rgb1;
+        uint32_t rgb2;
+        uint32_t res1;
+        uint32_t mac0;
+        uint32_t mac1;
+        uint32_t mac2;
+        uint32_t mac3;
+        uint32_t irgb;
+        uint32_t orgb;
+        uint32_t lzcs;
+        uint32_t lzcr;
+        };
+        uint32_t dr[32];
+    };
+
+    // Control Registers.
+    uint32_t cr[32];
+#if 0
+  cop2r32-36 9xS16 RT11RT12,..,RT33 Rotation matrix     (3x3)        ;cnt0-4
+  cop2r37-39 3x 32 TRX,TRY,TRZ      Translation vector  (X,Y,Z)      ;cnt5-7
+  cop2r40-44 9xS16 L11L12,..,L33    Light source matrix (3x3)        ;cnt8-12
+  cop2r45-47 3x 32 RBK,GBK,BBK      Background color    (R,G,B)      ;cnt13-15
+  cop2r48-52 9xS16 LR1LR2,..,LB3    Light color matrix source (3x3)  ;cnt16-20
+  cop2r53-55 3x 32 RFC,GFC,BFC      Far color           (R,G,B)      ;cnt21-23
+  cop2r56-57 2x 32 OFX,OFY          Screen offset       (X,Y)        ;cnt24-25
+  cop2r58 BuggyU16 H                Projection plane distance.       ;cnt26
+  cop2r59      S16 DQA              Depth queing parameter A (coeff) ;cnt27
+  cop2r60       32 DQB              Depth queing parameter B (offset);cnt28
+  cop2r61-62 2xS16 ZSF3,ZSF4        Average Z scale factors          ;cnt29-30
+  cop2r63      U20 FLAG             Returns any calculation errors   ;cnt31
+#endif
+};
+
+// Check that register aliases are correctly packed.
+static_assert(sizeof(cp2_registers) == (64 * sizeof(uint32_t)));
+
+struct cdrom_registers {
+    uint8_t index;
+    uint8_t command;
+    uint8_t request;
+
+    uint8_t interrupt_flag;
+    uint8_t interrupt_enable;
+
+    uint8_t parameter_fifo[16];
+    unsigned parameter_fifo_index;
+
+    uint8_t response_fifo[16];
+    unsigned response_fifo_length;
+    unsigned response_fifo_index;
+
+    uint8_t stat;
+};
+
 struct gpu_registers {
     uint8_t dma_direction;
 
@@ -243,7 +322,9 @@ struct event {
 struct state {
     struct cpu_registers cpu;
     struct cp0_registers cp0;
+    struct cp2_registers cp2;
     struct hw_registers hw;
+    struct cdrom_registers cdrom;
     struct gpu_registers gpu;
     struct gp0_registers gp0;
 

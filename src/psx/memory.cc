@@ -31,6 +31,15 @@ static void store_le(uint8_t *ptr, unsigned bytes, uint32_t val) {
 
 static bool load_u8_(uint32_t addr, uint32_t *val) {
     switch (addr) {
+
+    // CDROM Controller I/O Ports
+    case UINT32_C(0x1f801800): hw::read_cdrom_index(val); break;
+    case UINT32_C(0x1f801801): hw::read_cdrom_reg01(val); break;
+    case UINT32_C(0x1f801803): hw::read_cdrom_reg03(val); break;
+
+    // Controller and Memory Card I/O Ports
+    case UINT32_C(0x1f801040): hw::read_joy_data(val); break;
+
     default:
         std::string reason = fmt::format("load_u8 at 0x{:08x}", addr);
         psx::halt(reason);
@@ -42,9 +51,18 @@ static bool load_u8_(uint32_t addr, uint32_t *val) {
 
 static bool load_u16_(uint32_t addr, uint32_t *val) {
     switch (addr) {
+    // Controller and Memory Card I/O Ports
+    case UINT32_C(0x1f801044):  hw::read_joy_stat(val); break;
+    case UINT32_C(0x1f801048):  hw::read_joy_mode(val); break;
+    case UINT32_C(0x1f80104a):  hw::read_joy_ctrl(val); break;
+    case UINT32_C(0x1f80104e):  hw::read_joy_baud(val); break;
+
     // Interrupt Control
     case UINT32_C(0x1f801070):  hw::read_i_stat(val); break;
     case UINT32_C(0x1f801074):  hw::read_i_mask(val); break;
+
+    // Timers
+    case UINT32_C(0x1f801120):  hw::read_timer_value(2, val); break;
 
     // SPU Control
     case UINT32_C(0x1f801d80):  *val = state.hw.main_volume_left; break;
@@ -84,14 +102,8 @@ static bool load_u16_(uint32_t addr, uint32_t *val) {
 static bool load_u32_(uint32_t addr, uint32_t *val) {
     switch (addr) {
     // Interrupt Control
-    case UINT32_C(0x1f801070):
-        *val = state.hw.i_stat;
-        debugger::info(Debugger::IC, "i_stat -> {:04x}", *val);
-        break;
-    case UINT32_C(0x1f801074):
-        *val = state.hw.i_mask;
-        debugger::info(Debugger::IC, "i_mask -> {:04x}", *val);
-        break;
+    case UINT32_C(0x1f801070):  hw::read_i_stat(val); break;
+    case UINT32_C(0x1f801074):  hw::read_i_mask(val); break;
 
     // Timer Control
     case UINT32_C(0x1f801110):  hw::read_timer_value(1, val); break;
@@ -177,6 +189,12 @@ static bool store_u8_(uint32_t addr, uint8_t val) {
     // POST external 7 segment display, indicate BIOS boot status
     case UINT32_C(0x1f802041): break;
 
+    // CDROM Controller I/O Ports
+    case UINT32_C(0x1f801800): hw::write_cdrom_index(val); break;
+    case UINT32_C(0x1f801801): hw::write_cdrom_reg01(val); break;
+    case UINT32_C(0x1f801802): hw::write_cdrom_reg02(val); break;
+    case UINT32_C(0x1f801803): hw::write_cdrom_reg03(val); break;
+
     default:
         std::string reason = fmt::format("store_u8 at 0x{:08x}", addr);
         psx::halt(reason);
@@ -188,6 +206,11 @@ static bool store_u8_(uint32_t addr, uint8_t val) {
 
 static bool store_u16_(uint32_t addr, uint16_t val) {
     switch (addr) {
+    // Controller and Memory Card I/O Ports
+    case UINT32_C(0x1f801048):  hw::write_joy_mode(val); break;
+    case UINT32_C(0x1f80104a):  hw::write_joy_ctrl(val); break;
+    case UINT32_C(0x1f80104e):  hw::write_joy_baud(val); break;
+
     // Interrupt Control
     case UINT32_C(0x1f801070):  hw::write_i_stat(val); break;
     case UINT32_C(0x1f801074):  hw::write_i_mask(val); break;

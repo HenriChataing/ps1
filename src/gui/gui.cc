@@ -99,6 +99,9 @@ static void ShowCp0Registers(void) {
     #undef Print2Regs
 }
 
+static void ShowCp2Registers(void) {
+}
+
 static void ShowMemoryControlRegisters(void) {
     ImGui::Text("expansion_1_base_addr      %08" PRIx32 "\n",
         psx::state.hw.expansion_1_base_addr);
@@ -122,6 +125,17 @@ static void ShowMemoryControlRegisters(void) {
         psx::state.hw.ram_size);
     ImGui::Text("cache_control              %08" PRIx32 "\n",
         psx::state.hw.cache_control);
+}
+
+static void ShowJoyControlRegisters(void) {
+    ImGui::Text("joy_stat                   %04" PRIx16 "\n",
+        psx::state.hw.joy_stat);
+    ImGui::Text("joy_mode                   %04" PRIx16 "\n",
+        psx::state.hw.joy_mode);
+    ImGui::Text("joy_ctrl                   %04" PRIx16 "\n",
+        psx::state.hw.joy_ctrl);
+    ImGui::Text("joy_baud                   %04" PRIx16 "\n",
+        psx::state.hw.joy_baud);
 }
 
 static void ShowInterruptControlRegisters(void) {
@@ -157,6 +171,40 @@ static void ShowDMARegisters(void) {
         psx::state.hw.dpcr);
     ImGui::Text("dicr                       %08" PRIx32 "\n",
         psx::state.hw.dicr);
+}
+
+static void ShowCDROMRegisters(void) {
+    ImGui::Text("index                      %02" PRIx8 "\n",
+        psx::state.cdrom.index);
+    ImGui::Text("command                    %02" PRIx8 "\n",
+        psx::state.cdrom.command);
+    ImGui::Text("request                    %02" PRIx8 "\n",
+        psx::state.cdrom.request);
+
+    ImGui::Text("interrupt_enable           %02" PRIx8 "\n",
+        psx::state.cdrom.interrupt_enable);
+    ImGui::Text("interrupt_flag             %02" PRIx8 "\n",
+        psx::state.cdrom.interrupt_flag);
+
+    ImGui::Text("parameter fifo [%d]\n",
+        psx::state.cdrom.parameter_fifo_index);
+    for (unsigned i = 0; i < 16; i+=4) {
+        ImGui::Text("   %02x  %02x  %02x  %02x\n",
+            psx::state.cdrom.parameter_fifo[i + 0],
+            psx::state.cdrom.parameter_fifo[i + 1],
+            psx::state.cdrom.parameter_fifo[i + 2],
+            psx::state.cdrom.parameter_fifo[i + 3]);
+    }
+
+    ImGui::Text("response fifo [%d]\n",
+        psx::state.cdrom.response_fifo_index);
+    for (unsigned i = 0; i < 16; i+=4) {
+        ImGui::Text("   %02x  %02x  %02x  %02x\n",
+            psx::state.cdrom.response_fifo[i + 0],
+            psx::state.cdrom.response_fifo[i + 1],
+            psx::state.cdrom.response_fifo[i + 2],
+            psx::state.cdrom.response_fifo[i + 3]);
+    }
 }
 
 static void ShowGPURegisters(void) {
@@ -247,9 +295,12 @@ static Module Modules[] = {
     { "Analytics",      -1,                     ShowAnalytics },
     { "CPU",            Debugger::CPU,          ShowCpuRegisters },
     { "CPU::COP0",      Debugger::COP0,         ShowCp0Registers },
+    { "CPU::COP2",      Debugger::COP2,         ShowCp2Registers },
     { "HW::MC",         Debugger::MC,           ShowMemoryControlRegisters },
+    { "HW::JC",         Debugger::JC,           ShowJoyControlRegisters },
     { "HW::IC",         Debugger::IC,           ShowInterruptControlRegisters },
     { "HW::DMA",        Debugger::DMA,          ShowDMARegisters },
+    { "HW::CDROM",      Debugger::CDROM,        ShowCDROMRegisters },
     { "HW::GPU",        Debugger::GPU,          ShowGPURegisters },
     { "HW::Timer",      Debugger::Timer,        ShowTimerRegisters },
 };

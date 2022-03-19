@@ -44,6 +44,7 @@ void setVideoImage(size_t width, size_t height, size_t stride,
     VideoImage::width = width;
     VideoImage::height = height;
     VideoImage::colorDepth = colorDepth;
+    VideoImage::stride = stride;
     VideoImage::data = data;
 }
 
@@ -78,13 +79,11 @@ bool getVideoImage(size_t *width, size_t *height, GLuint *id)
             glPixelStorei(GL_UNPACK_SWAP_BYTES, GL_FALSE);
             glPixelStorei(GL_UNPACK_LSB_FIRST,  GL_FALSE);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, VideoImage::stride);
-            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             glPrintError("glPixelStorei");
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
                          VideoImage::width, VideoImage::height,
-                         0, GL_RGB, type, VideoImage::data);
+                         0, GL_RGBA, type, VideoImage::data);
             glPrintError("glTexImage2D");
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

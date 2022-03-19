@@ -149,6 +149,12 @@ void eval_CTC0(uint32_t instr);
 void eval_RFE(uint32_t instr);
 void eval_COP0(uint32_t instr);
 
+void eval_MFC2(uint32_t instr);
+void eval_MTC2(uint32_t instr);
+void eval_CFC2(uint32_t instr);
+void eval_CTC2(uint32_t instr);
+void eval_COP2(uint32_t instr);
+
 /** Helper for branch instructions: update the state to branch to \p btrue
  * or \p bfalse depending on the tested condition \p cond. */
 static inline void branch(bool cond, uint32_t btrue, uint32_t bfalse) {

@@ -8,6 +8,67 @@ using namespace psx;
 
 namespace psx::hw {
 
+void read_joy_data(uint32_t *val) {
+    // TODO
+    *val = 0;
+    debugger::debug(Debugger::JC, "joy_data -> {:02x}", *val);
+}
+
+//  0     TX Ready Flag 1   (1=Ready/Started)
+//  1     RX FIFO Not Empty (0=Empty, 1=Not Empty)
+//  2     TX Ready Flag 2   (1=Ready/Finished)
+//  3     RX Parity Error   (0=No, 1=Error; Wrong Parity, when enabled)  (sticky)
+//  4     Unknown (zero)    (unlike SIO, this isn't RX FIFO Overrun flag)
+//  5     Unknown (zero)    (for SIO this would be RX Bad Stop Bit)
+//  6     Unknown (zero)    (for SIO this would be RX Input Level AFTER Stop bit)
+//  7     /ACK Input Level  (0=High, 1=Low)
+//  8     Unknown (zero)    (for SIO this would be CTS Input Level)
+//  9     Interrupt Request (0=None, 1=IRQ7) (See JOY_CTRL.Bit4,10-12)   (sticky)
+//  10    Unknown (always zero)
+//  11-31 Baudrate Timer    (21bit timer, decrementing at 33MHz)
+
+#define JOY_STAT_INT                (UINT32_C(1) << 9)
+#define JOY_STAT_ACK_INPUT_LEVEL    (UINT32_C(1) << 7)
+#define JOY_STAT_RX_PARITY_ERROR    (UINT32_C(1) << 3)
+#define JOY_STAT_TX_READY_2         (UINT32_C(1) << 2)
+#define JOY_STAT_RX_FIFO_NOT_EMPTY  (UINT32_C(1) << 1)
+#define JOY_STAT_TX_READY_1         (UINT32_C(1) << 0)
+
+void read_joy_stat(uint32_t *val) {
+    *val = state.hw.joy_stat;
+    debugger::info(Debugger::JC, "joy_stat -> {:02x}", *val);
+}
+
+void read_joy_mode(uint32_t *val) {
+    *val = state.hw.joy_mode;
+    debugger::info(Debugger::JC, "joy_mode -> {:02x}", *val);
+}
+
+void read_joy_ctrl(uint32_t *val) {
+    *val = state.hw.joy_ctrl;
+    debugger::info(Debugger::JC, "joy_ctrl -> {:02x}", *val);
+}
+
+void read_joy_baud(uint32_t *val) {
+    *val = state.hw.joy_baud;
+    debugger::info(Debugger::JC, "joy_baud -> {:02x}", *val);
+}
+
+void write_joy_mode(uint16_t val) {
+    debugger::info(Debugger::JC, "joy_mode <- {:04x}", val);
+    state.hw.joy_mode = val;
+}
+
+void write_joy_ctrl(uint16_t val) {
+    debugger::info(Debugger::JC, "joy_ctrl <- {:04x}", val);
+    state.hw.joy_ctrl = val;
+}
+
+void write_joy_baud(uint16_t val) {
+    debugger::info(Debugger::JC, "joy_baud <- {:04x}", val);
+    state.hw.joy_baud = val;
+}
+
 static void check_ip2(void) {
     bool any_set = (state.hw.i_stat & state.hw.i_mask) != 0;
     if (any_set) {
@@ -25,22 +86,22 @@ void set_i_stat(uint32_t irq) {
 
 void read_i_stat(uint32_t *val) {
     *val = state.hw.i_stat;
-    debugger::info(Debugger::IC, "i_stat -> {:04x}", *val);
+    debugger::debug(Debugger::IC, "i_stat -> {:04x}", *val);
 }
 
 void read_i_mask(uint32_t *val) {
     *val = state.hw.i_mask;
-    debugger::info(Debugger::IC, "i_mask -> {:04x}", *val);
+    debugger::debug(Debugger::IC, "i_mask -> {:04x}", *val);
 }
 
 void write_i_stat(uint32_t val) {
-    debugger::info(Debugger::IC, "i_stat <- {:04x}", val);
+    debugger::debug(Debugger::IC, "i_stat <- {:04x}", val);
     state.hw.i_stat &= val;
     check_ip2();
 }
 
 void write_i_mask(uint32_t val) {
-    debugger::info(Debugger::IC, "i_mask <- {:04x}", val);
+    debugger::debug(Debugger::IC, "i_mask <- {:04x}", val);
     state.hw.i_mask = val;
     check_ip2();
 }

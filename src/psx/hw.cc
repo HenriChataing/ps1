@@ -8,12 +8,6 @@ using namespace psx;
 
 namespace psx::hw {
 
-void read_joy_data(uint32_t *val) {
-    // TODO
-    *val = 0;
-    debugger::debug(Debugger::JC, "joy_data -> {:02x}", *val);
-}
-
 //  0     TX Ready Flag 1   (1=Ready/Started)
 //  1     RX FIFO Not Empty (0=Empty, 1=Not Empty)
 //  2     TX Ready Flag 2   (1=Ready/Finished)
@@ -27,6 +21,8 @@ void read_joy_data(uint32_t *val) {
 //  10    Unknown (always zero)
 //  11-31 Baudrate Timer    (21bit timer, decrementing at 33MHz)
 
+#define JOY_STAT_BAUD_TIMER_MASK    UINT32_C(0x1fffff)
+#define JOY_STAT_BAUD_TIMER_SHIFT   11
 #define JOY_STAT_INT                (UINT32_C(1) << 9)
 #define JOY_STAT_ACK_INPUT_LEVEL    (UINT32_C(1) << 7)
 #define JOY_STAT_RX_PARITY_ERROR    (UINT32_C(1) << 3)
@@ -36,7 +32,57 @@ void read_joy_data(uint32_t *val) {
 
 void read_joy_stat(uint32_t *val) {
     *val = state.hw.joy_stat;
-    debugger::info(Debugger::JC, "joy_stat -> {:02x}", *val);
+    debugger::info(Debugger::JC, "joy_stat -> {:08x}", *val);
+}
+
+void read_joy_data(uint32_t *val) {
+    // TODO
+    *val = 0;
+    debugger::debug(Debugger::JC, "joy_data -> {:02x}", *val);
+    state.hw.joy_stat &= ~JOY_STAT_RX_FIFO_NOT_EMPTY;
+}
+
+void write_joy_data(uint32_t val) {
+    // TODO
+    debugger::debug(Debugger::JC, "joy_data <- {:02x}", val);
+    state.hw.joy_stat |= JOY_STAT_RX_FIFO_NOT_EMPTY;
+}
+
+//  0     TX Enable (TXEN)  (0=Disable, 1=Enable)
+//  1     /JOYn Output      (0=High, 1=Low/Select) (/JOYn as defined in Bit13)
+//  2     RX Enable (RXEN)  (0=Normal, when /JOYn=Low, 1=Force Enable Once)
+//  3     Unknown? (read/write-able) (for SIO, this would be TX Output Level)
+//  4     Acknowledge       (0=No change, 1=Reset JOY_STAT.Bits 3,9)          (W)
+//  5     Unknown? (read/write-able) (for SIO, this would be RTS Output Level)
+//  6     Reset             (0=No change, 1=Reset most JOY_registers to zero) (W)
+//  7     Not used             (always zero) (unlike SIO, no matter of FACTOR)
+//  8-9   RX Interrupt Mode    (0..3 = IRQ when RX FIFO contains 1,2,4,8 bytes)
+//  10    TX Interrupt Enable  (0=Disable, 1=Enable) ;when JOY_STAT.0-or-2 ;Ready
+//  11    RX Interrupt Enable  (0=Disable, 1=Enable) ;when N bytes in RX FIFO
+//  12    ACK Interrupt Enable (0=Disable, 1=Enable) ;when JOY_STAT.7  ;/ACK=LOW
+//  13    Desired Slot Number  (0=/JOY1, 1=/JOY2) (set to LOW when Bit1=1)
+//  14-15 Not used             (always zero)
+
+#define JOY_CTRL_JOYN               (UINT32_C(1) << 13)
+#define JOY_CTRL_ACK_INT_EN         (UINT32_C(1) << 12)
+#define JOY_CTRL_RX_INT_EN          (UINT32_C(1) << 11)
+#define JOY_CTRL_TX_INT_EN          (UINT32_C(1) << 10)
+#define JOY_CTRL_RX_INT_MODE_MASK   UINT32_C(0x3)
+#define JOY_CTRL_RX_INT_MODE_SHIFT  8
+#define JOY_CTRL_RST                (UINT32_C(1) << 6)
+#define JOY_CTRL_ACK                (UINT32_C(1) << 4)
+#define JOY_CTRL_RXEN               (UINT32_C(1) << 2)
+#define JOY_CTRL_JOYN_OUTPUT        (UINT32_C(1) << 1)
+#define JOY_CTRL_TXEN               (UINT32_C(1) << 0)
+
+void read_joy_ctrl(uint32_t *val) {
+    *val = state.hw.joy_ctrl;
+    debugger::info(Debugger::JC, "joy_ctrl -> {:02x}", *val);
+}
+
+void write_joy_ctrl(uint16_t val) {
+    debugger::info(Debugger::JC, "joy_ctrl <- {:04x}", val);
+    state.hw.joy_ctrl = val;
 }
 
 void read_joy_mode(uint32_t *val) {
@@ -44,24 +90,14 @@ void read_joy_mode(uint32_t *val) {
     debugger::info(Debugger::JC, "joy_mode -> {:02x}", *val);
 }
 
-void read_joy_ctrl(uint32_t *val) {
-    *val = state.hw.joy_ctrl;
-    debugger::info(Debugger::JC, "joy_ctrl -> {:02x}", *val);
-}
-
-void read_joy_baud(uint32_t *val) {
-    *val = state.hw.joy_baud;
-    debugger::info(Debugger::JC, "joy_baud -> {:02x}", *val);
-}
-
 void write_joy_mode(uint16_t val) {
     debugger::info(Debugger::JC, "joy_mode <- {:04x}", val);
     state.hw.joy_mode = val;
 }
 
-void write_joy_ctrl(uint16_t val) {
-    debugger::info(Debugger::JC, "joy_ctrl <- {:04x}", val);
-    state.hw.joy_ctrl = val;
+void read_joy_baud(uint32_t *val) {
+    *val = state.hw.joy_baud;
+    debugger::info(Debugger::JC, "joy_baud -> {:02x}", *val);
 }
 
 void write_joy_baud(uint16_t val) {

@@ -185,6 +185,9 @@ bool DefaultBus::load(unsigned bytes, uint32_t addr, uint32_t *val) {
 
 static bool store_u8_(uint32_t addr, uint8_t val) {
     switch (addr) {
+    // Controller and Memory Card I/O Ports
+    case UINT32_C(0x1f801040): hw::write_joy_data(val); break;
+
     // Expansion Region 2 - Int/Dip/Post
     // POST external 7 segment display, indicate BIOS boot status
     case UINT32_C(0x1f802041): break;

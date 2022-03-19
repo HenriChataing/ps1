@@ -8,12 +8,13 @@
 namespace psx::hw {
 
 void read_joy_data(uint32_t *val);
+void write_joy_data(uint32_t val);
 void read_joy_stat(uint32_t *val);
-void read_joy_mode(uint32_t *val);
 void read_joy_ctrl(uint32_t *val);
-void read_joy_baud(uint32_t *val);
-void write_joy_mode(uint16_t val);
 void write_joy_ctrl(uint16_t val);
+void read_joy_mode(uint32_t *val);
+void write_joy_mode(uint16_t val);
+void read_joy_baud(uint32_t *val);
 void write_joy_baud(uint16_t val);
 
 #define I_STAT_SPU      (UINT32_C(1) << 9)

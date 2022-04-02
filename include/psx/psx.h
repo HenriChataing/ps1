@@ -186,8 +186,10 @@ struct gpu_registers {
     uint16_t start_of_display_area_x;
     uint16_t start_of_display_area_y;
 
-    uint32_t horizontal_display_range;
-    uint32_t vertical_display_range;
+    uint16_t horizontal_display_range_x1;
+    uint16_t horizontal_display_range_x2;
+    uint16_t vertical_display_range_y1;
+    uint16_t vertical_display_range_y2;
 
     bool texture_disable;
     bool dither_enable;

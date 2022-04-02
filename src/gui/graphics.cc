@@ -6,6 +6,7 @@
 #include <graphics.h>
 #include <psx/debugger.h>
 #include <psx/psx.h>
+#include <psx/hw.h>
 
 #include <png.h>
 
@@ -19,34 +20,15 @@ static void glPrintError(char const *msg);
 
 /** Current video image configuration. */
 namespace VideoImage {
-static size_t width;
-static size_t height;
-static size_t stride;
-static size_t colorDepth;
+static size_t buffer_width;
+static size_t buffer_height;
+static size_t display_width;
+static size_t display_height;
 static void const *data = NULL;
 
 static GLuint texture = 0;
 static bool dirty = false;
 };
-
-/** Set the configuration of the framebuffer being displayed to the screen. */
-void setVideoImage(size_t width, size_t height, size_t stride,
-                   size_t colorDepth, void const *data)
-{
-    std::lock_guard<std::mutex> lock(graphicsMutex);
-
-    VideoImage::dirty |=
-        VideoImage::width != width ||
-        VideoImage::height != height ||
-        VideoImage::colorDepth != colorDepth ||
-        VideoImage::data != data;
-
-    VideoImage::width = width;
-    VideoImage::height = height;
-    VideoImage::colorDepth = colorDepth;
-    VideoImage::stride = stride;
-    VideoImage::data = data;
-}
 
 /** Refresh the screen, called once during vertical blank. */
 void refreshVideoImage(void)
@@ -68,23 +50,28 @@ bool getVideoImage(size_t *width, size_t *height, GLuint *id)
             VideoImage::texture = 0;
         }
 
+        free((void *)VideoImage::data);
+        VideoImage::data = psx::hw::generate_display(
+            &VideoImage::buffer_width, &VideoImage::buffer_height,
+            &VideoImage::display_width, &VideoImage::display_height);
+
         if (VideoImage::data != NULL) {
-            GLenum type = VideoImage::colorDepth == 24
-                ? GL_UNSIGNED_BYTE
-                : GL_UNSIGNED_SHORT_5_5_5_1;
             glGenTextures(1, &VideoImage::texture);
             glPrintError("glGenTextures");
             glBindTexture(GL_TEXTURE_2D, VideoImage::texture);
             glPrintError("glBindTextures");
             glPixelStorei(GL_UNPACK_SWAP_BYTES, GL_FALSE);
             glPixelStorei(GL_UNPACK_LSB_FIRST,  GL_FALSE);
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, VideoImage::stride);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
             glPrintError("glPixelStorei");
+
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
-                         VideoImage::width, VideoImage::height,
-                         0, GL_RGBA, type, VideoImage::data);
+                         VideoImage::buffer_width,
+                         VideoImage::buffer_height,
+                         0, GL_RGB, GL_UNSIGNED_BYTE, VideoImage::data);
             glPrintError("glTexImage2D");
+
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glPrintError("glTexParameteri");
@@ -92,8 +79,8 @@ bool getVideoImage(size_t *width, size_t *height, GLuint *id)
         }
     }
 
-    *width = VideoImage::width;
-    *height = VideoImage::height;
+    *width = VideoImage::display_width;
+    *height = VideoImage::display_height;
     *id = VideoImage::texture;
     return VideoImage::data != NULL;
 }

@@ -237,10 +237,12 @@ static void ShowGPURegisters(void) {
         psx::state.gpu.start_of_display_area_x);
     ImGui::Text("start_of_display_area_y        %" PRIu16 "\n",
         psx::state.gpu.start_of_display_area_y);
-    ImGui::Text("horizontal_display_range       %" PRIu32 "\n",
-        psx::state.gpu.horizontal_display_range);
-    ImGui::Text("vertical_display_range         %" PRIu32 "\n",
-        psx::state.gpu.vertical_display_range);
+    ImGui::Text("horizontal_display_range       %" PRIu16 " - %" PRIu16 "\n",
+        psx::state.gpu.horizontal_display_range_x1,
+        psx::state.gpu.horizontal_display_range_x2);
+    ImGui::Text("vertical_display_range         %" PRIu16 " - %" PRIu16 "\n",
+        psx::state.gpu.vertical_display_range_y1,
+        psx::state.gpu.vertical_display_range_y2);
     ImGui::Text("texture_disable                %s\n",
         psx::state.gpu.texture_disable ? "true" : "false");
     ImGui::Text("dither_enable                  %s\n",

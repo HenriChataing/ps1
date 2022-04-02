@@ -1,4 +1,5 @@
 
+#include <cassert>
 #include <algorithm>
 #include <psx/psx.h>
 #include <psx/hw.h>
@@ -56,10 +57,16 @@ namespace psx::hw {
 
 /// Re-evaluate the location of the displayed framebuffer given
 /// the current video configuration.
-static void update_frame_buffer() {
+void *generate_display(size_t *out_buffer_width, size_t *out_buffer_height,
+                       size_t *out_display_width, size_t *out_display_height) {
     if (!state.gpu.display_enable) {
-        setVideoImage(0, 0, 0, 0, NULL);
-        return;
+        return NULL;
+    }
+    if ((state.gpu.vertical_display_range_y2 <
+         state.gpu.vertical_display_range_y1) ||
+        (state.gpu.horizontal_display_range_x2 <
+         state.gpu.horizontal_display_range_x1)) {
+        return NULL;
     }
 
     uint8_t const *framebuffer_address = state.vram +
@@ -67,9 +74,8 @@ static void update_frame_buffer() {
         state.gpu.start_of_display_area_x * 2;
 
     size_t color_depth = state.gpu.display_area_color_depth ? 24 : 16;
-    size_t height = state.gpu.vertical_resolution ? 480 : 240;
+    size_t framebuffer_height = state.gpu.vertical_resolution ? 480 : 240;
     size_t width;
-    size_t stride = 1024;
 
     switch (state.gpu.horizontal_resolution) {
     case 0x0: width = 256; break;
@@ -79,7 +85,77 @@ static void update_frame_buffer() {
     default:  width = 368; break;
     }
 
-    setVideoImage(width, height, stride, color_depth, framebuffer_address);
+    size_t display_height =
+        state.gpu.vertical_display_range_y2 -
+        state.gpu.vertical_display_range_y1;
+    if (state.gpu.vertical_interlace) {
+        framebuffer_height /= 2;
+    }
+
+    size_t height = std::min(framebuffer_height, display_height);
+    unsigned char *framebuffer = (unsigned char *)calloc(width * height, 3);
+    unsigned char *src_data = (unsigned char *)framebuffer_address;
+    unsigned char *dst_data = framebuffer;
+
+    if (color_depth == 24 && state.gpu.vertical_interlace) {
+        for (unsigned y = 0; y < height; y++, src_data += 4096) {
+            for (unsigned x = 0; x < width; x++, dst_data += 3) {
+                unsigned char r0 = src_data[3 * x + 0];
+                unsigned char g0 = src_data[3 * x + 1];
+                unsigned char b0 = src_data[3 * x + 2];
+                unsigned char r1 = src_data[3 * x + 0 + 2048];
+                unsigned char g1 = src_data[3 * x + 1 + 2048];
+                unsigned char b1 = src_data[3 * x + 2 + 2048];
+                dst_data[0] = (r0 + r1) / 2;
+                dst_data[1] = (g0 + g1) / 2;
+                dst_data[2] = (b0 + b1) / 2;
+            }
+        }
+    } else if (color_depth == 24) {
+        for (unsigned y = 0; y < height; y++, src_data += 2048) {
+            memcpy(dst_data, src_data, width * 3);
+            dst_data += width * 3;
+
+        }
+    } else if (state.gpu.vertical_interlace) {
+        for (unsigned y = 0; y < height; y++, src_data += 4096) {
+            for (unsigned x = 0; x < width; x++, dst_data += 3) {
+                uint16_t rgb0 =
+                    ((uint16_t)(src_data[2 * x + 0]) << 0) |
+                    ((uint16_t)(src_data[2 * x + 1]) << 8);
+                uint16_t rgb1 =
+                    ((uint16_t)(src_data[2 * x + 0 + 2048]) << 0) |
+                    ((uint16_t)(src_data[2 * x + 1 + 2048]) << 8);
+
+                unsigned char r0 = ((rgb0 >>  0) & 0x1f) << 3;
+                unsigned char g0 = ((rgb0 >>  5) & 0x1f) << 3;
+                unsigned char b0 = ((rgb0 >> 10) & 0x1f) << 3;
+                unsigned char r1 = ((rgb1 >>  0) & 0x1f) << 3;
+                unsigned char g1 = ((rgb1 >>  5) & 0x1f) << 3;
+                unsigned char b1 = ((rgb1 >> 10) & 0x1f) << 3;
+                dst_data[0] = (r0 + r1) / 2;
+                dst_data[1] = (g0 + g1) / 2;
+                dst_data[2] = (b0 + b1) / 2;
+            }
+        }
+    } else {
+        for (unsigned y = 0; y < height; y++, src_data += 2048) {
+            for (unsigned x = 0; x < width; x++, dst_data += 3) {
+                uint16_t rgb =
+                    ((uint16_t)(src_data[2 * x + 0]) << 0) |
+                    ((uint16_t)(src_data[2 * x + 1]) << 8);
+                dst_data[0] = ((rgb >>  0) & 0x1f) << 3;
+                dst_data[1] = ((rgb >>  5) & 0x1f) << 3;
+                dst_data[2] = ((rgb >> 10) & 0x1f) << 3;
+            }
+        }
+    }
+
+    *out_buffer_width = width;
+    *out_buffer_height = height;
+    *out_display_width = 320;
+    *out_display_height = 240;
+    return framebuffer;
 }
 
 void read_gpuread(uint32_t *val) {
@@ -242,24 +318,32 @@ static void render_triangle(vertex_attributes a,
     int16_t y0 = std::max<int16_t>(0,    std::min({a.y, b.y, c.y, state.gpu.drawing_area_y1}));
     int16_t y1 = std::min<int16_t>(512,  std::max({a.y, b.y, c.y, state.gpu.drawing_area_y2}));
 
+    // Compute edge function for Vc for Va, Vb.
+    // - if == 0 the triangle is flat and not rendered.
+    // - if < 0 the vertices are ordered in reverse order, swap
+    //   Va, Vb to restore sign of edge function.
     float area = edge_function(a.x, a.y, b.x, b.y, c.x, c.y);
     if (area == 0.) {
         return;
     }
+    if (area < 0.) {
+        std::swap(a, b);
+        area = -area;
+    }
 
     for (int16_t y = y0; y <= y1; y++) {
         for (int16_t x = x0; x <= x1; x++) {
-            float wc = edge_function(a.x, a.y, b.x, b.y, x, y);
             float wa = edge_function(b.x, b.y, c.x, c.y, x, y);
             float wb = edge_function(c.x, c.y, a.x, a.y, x, y);
+            float wc = edge_function(a.x, a.y, b.x, b.y, x, y);
             bool inside = wa >= 0. && wb >= 0. && wc >= 0.;
             if (inside) {
                 vertex_attributes pixel;
                 pixel.x = x;
                 pixel.y = y;
-                pixel.r = a.r;
-                pixel.g = a.g;
-                pixel.b = a.b;
+                pixel.r = (a.r * wa + b.r * wb + c.r * wc) / area;
+                pixel.g = (a.g * wa + b.g * wb + c.g * wc) / area;
+                pixel.b = (a.b * wa + b.b * wb + c.b * wc) / area;
                 render_pixel(pixel, attributes);
             }
         }
@@ -267,6 +351,35 @@ static void render_triangle(vertex_attributes a,
 }
 
 static void nop(void) {
+}
+
+static void fill_rectangle(void) {
+    uint8_t r = state.gp0.buffer[0];
+    uint8_t g = state.gp0.buffer[0] >> 8;
+    uint8_t b = state.gp0.buffer[0] >> 16;
+    uint16_t x0 = state.gp0.buffer[1];
+    uint16_t y0 = state.gp0.buffer[1] >> 16;
+    uint16_t width  = state.gp0.buffer[2];
+    uint16_t height = state.gp0.buffer[2] >> 16;
+
+    render_attributes attributes = {
+        .blended = false,
+        .semi_transparency = false,
+        .texture_mapping = false,
+        .gouraud_shading = false,
+    };
+
+    for (uint16_t y = 0; y < height; y++) {
+        for (uint16_t x = 0; x < width; x++) {
+            vertex_attributes pixel;
+            pixel.x = x0 + x;
+            pixel.y = y0 + y;
+            pixel.r = r;
+            pixel.g = g;
+            pixel.b = b;
+            render_pixel(pixel, attributes);
+        }
+    }
 }
 
 static void monochrome_4p_polygon_opaque(void) {
@@ -288,9 +401,83 @@ static void monochrome_4p_polygon_opaque(void) {
     vd.x = sext_i11_i16(state.gp0.buffer[4]);
     vd.y = sext_i11_i16(state.gp0.buffer[4] >> 16);
 
-    va.r = vb.r = r;
-    va.g = vb.g = g;
-    va.b = vb.b = b;
+    va.r = vb.r = vc.r = vd.r = r;
+    va.g = vb.g = vc.g = vd.g = g;
+    va.b = vb.b = vc.b = vd.b = b;
+
+    render_attributes attributes = {
+        .blended = false,
+        .semi_transparency = false,
+        .texture_mapping = false,
+        .gouraud_shading = false,
+    };
+
+    render_triangle(va, vb, vc, attributes);
+    render_triangle(vb, vc, vd, attributes);
+}
+
+static void shaded_3p_polygon_opaque(void) {
+    vertex_attributes va = { 0 };
+    vertex_attributes vb = { 0 };
+    vertex_attributes vc = { 0 };
+
+    va.r = state.gp0.buffer[0];
+    va.g = state.gp0.buffer[0] >> 8;
+    va.b = state.gp0.buffer[0] >> 16;
+    va.x = sext_i11_i16(state.gp0.buffer[1]);
+    va.y = sext_i11_i16(state.gp0.buffer[1] >> 16);
+
+    vb.r = state.gp0.buffer[2];
+    vb.g = state.gp0.buffer[2] >> 8;
+    vb.b = state.gp0.buffer[2] >> 16;
+    vb.x = sext_i11_i16(state.gp0.buffer[3]);
+    vb.y = sext_i11_i16(state.gp0.buffer[3] >> 16);
+
+    vc.r = state.gp0.buffer[4];
+    vc.g = state.gp0.buffer[4] >> 8;
+    vc.b = state.gp0.buffer[4] >> 16;
+    vc.x = sext_i11_i16(state.gp0.buffer[5]);
+    vc.y = sext_i11_i16(state.gp0.buffer[5] >> 16);
+
+    render_attributes attributes = {
+        .blended = false,
+        .semi_transparency = false,
+        .texture_mapping = false,
+        .gouraud_shading = false,
+    };
+
+    render_triangle(va, vb, vc, attributes);
+}
+
+static void shaded_4p_polygon_opaque(void) {
+    vertex_attributes va = { 0 };
+    vertex_attributes vb = { 0 };
+    vertex_attributes vc = { 0 };
+    vertex_attributes vd = { 0 };
+
+    va.r = state.gp0.buffer[0];
+    va.g = state.gp0.buffer[0] >> 8;
+    va.b = state.gp0.buffer[0] >> 16;
+    va.x = sext_i11_i16(state.gp0.buffer[1]);
+    va.y = sext_i11_i16(state.gp0.buffer[1] >> 16);
+
+    vb.r = state.gp0.buffer[2];
+    vb.g = state.gp0.buffer[2] >> 8;
+    vb.b = state.gp0.buffer[2] >> 16;
+    vb.x = sext_i11_i16(state.gp0.buffer[3]);
+    vb.y = sext_i11_i16(state.gp0.buffer[3] >> 16);
+
+    vc.r = state.gp0.buffer[4];
+    vc.g = state.gp0.buffer[4] >> 8;
+    vc.b = state.gp0.buffer[4] >> 16;
+    vc.x = sext_i11_i16(state.gp0.buffer[5]);
+    vc.y = sext_i11_i16(state.gp0.buffer[5] >> 16);
+
+    vd.r = state.gp0.buffer[6];
+    vd.g = state.gp0.buffer[6] >> 8;
+    vd.b = state.gp0.buffer[6] >> 16;
+    vd.x = sext_i11_i16(state.gp0.buffer[7]);
+    vd.y = sext_i11_i16(state.gp0.buffer[7] >> 16);
 
     render_attributes attributes = {
         .blended = false,
@@ -400,7 +587,7 @@ static struct {
 } gp0_commands[256] = {
     { 1,  "nop", nop },
     { 1,  "clear_cache", nop },
-    { 3,  "fill_rectangle", NULL },
+    { 3,  "fill_rectangle", fill_rectangle },
     { 1,  "cmd_03", NULL },
     { 1,  "cmd_04", NULL },
     { 1,  "cmd_05", NULL },
@@ -446,7 +633,7 @@ static struct {
     { 9,  "textured_4p_polygon_opaque_raw_texture",                  NULL },
     { 9,  "textured_4p_polygon_semi_transparent_textture_blending",  NULL },
     { 9,  "textured_4p_polygon_semi_transparent_raw_texture",        NULL },
-    { 6,  "shaded_3p_polygon_opaque",                                NULL },
+    { 6,  "shaded_3p_polygon_opaque", shaded_3p_polygon_opaque },
     { 1,  "cmd_31", NULL },
     { 6,  "shaded_3p_polygon_semi_transparent",                      NULL },
     { 1,  "cmd_33", NULL },
@@ -454,7 +641,7 @@ static struct {
     { 1,  "cmd_35", NULL },
     { 9,  "shaded_3p_polygon_semi_transparent_texture_blending", NULL },
     { 1,  "cmd_37", NULL },
-    { 8,  "shaded_4p_polygon_opaque",                                   NULL },
+    { 8,  "shaded_4p_polygon_opaque", shaded_4p_polygon_opaque },
     { 1,  "cmd_39", NULL },
     { 8,  "shaded_4p_polygon_semi_transparent",                         NULL },
     { 1,  "cmd_3b", NULL },
@@ -687,8 +874,6 @@ static void display_mode(uint32_t cmd) {
     state.hw.gpustat |= (cmd & UINT32_C(0x3f)) << 17;
     state.hw.gpustat |= ((cmd >> 6) & UINT32_C(0x1)) << 16;
     state.hw.gpustat |= ((cmd >> 7) & UINT32_C(0x1)) << 14;
-
-    update_frame_buffer();
 }
 
 static void reset_command_buffer(uint32_t cmd) {
@@ -719,16 +904,16 @@ static void dma_direction(uint32_t cmd) {
 static void start_of_display_area(uint32_t cmd) {
     state.gpu.start_of_display_area_x = (cmd >> 0) & UINT32_C(0x3ff);
     state.gpu.start_of_display_area_y = (cmd >> 10) & UINT32_C(0x1ff);
-
-    update_frame_buffer();
 }
 
 static void horizontal_display_range(uint32_t cmd) {
-    state.gpu.horizontal_display_range = cmd & UINT32_C(0x00ffffff);
+    state.gpu.horizontal_display_range_x1 = (cmd >> 0) & UINT32_C(0xfff);
+    state.gpu.horizontal_display_range_x2 = (cmd >> 12) & UINT32_C(0xfff);
 }
 
 static void vertical_display_range(uint32_t cmd) {
-    state.gpu.vertical_display_range = cmd & UINT32_C(0x00ffffff);
+    state.gpu.vertical_display_range_y1 = (cmd >> 0) & UINT32_C(0x3ff);
+    state.gpu.vertical_display_range_y2 = (cmd >> 10) & UINT32_C(0x3ff);
 }
 
 static struct {
@@ -934,9 +1119,9 @@ void hblank_event() {
 
     if (state.gpu.scanline == scanline_vblank) {
         hw::set_i_stat(I_STAT_VBLANK);
+        refreshVideoImage();
     }
 
-    refreshVideoImage();
     state.schedule_event(cpu_clock + delay, hblank_event);
 }
 

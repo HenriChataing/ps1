@@ -231,7 +231,17 @@ enum gp0_state {
 };
 
 struct gp0_registers {
-    uint32_t buffer[16];
+    union {
+        uint32_t buffer[16];
+        struct {
+            uint32_t x0;
+            uint32_t y0;
+            uint32_t width;
+            uint32_t height;
+            uint32_t x;
+            uint32_t y;
+        } transfer;
+    };
     uint32_t count;
     enum gp0_state state;
 };

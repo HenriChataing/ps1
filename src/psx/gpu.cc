@@ -166,18 +166,29 @@ void read_gpuread(uint32_t *val) {
         return;
     }
 
-    uint32_t x = (state.gp0.buffer[0] + state.gp0.buffer[4]) & UINT16_C(0x3ff);
-    uint32_t y = (state.gp0.buffer[1] + state.gp0.buffer[5]) & UINT16_C(0x1ff);
-    *val = memory::load_u32_le(state.vram + y * 2048 + 2 * x);
+    uint32_t x = (state.gp0.transfer.x0 + state.gp0.transfer.x) & UINT16_C(0x3ff);
+    uint32_t y = (state.gp0.transfer.y0 + state.gp0.transfer.y) & UINT16_C(0x1ff);
+    uint16_t lo;
+    uint16_t hi;
 
-    state.gp0.buffer[4] += 2;
-
-    if (state.gp0.buffer[4] >= state.gp0.buffer[2]) {
-        state.gp0.buffer[4] = 0;
-        state.gp0.buffer[5]++;
+    lo = memory::load_u16_le(state.vram + y * 2048 + 2 * x);
+    state.gp0.transfer.x++;
+    x++;
+    if (state.gp0.transfer.x >= state.gp0.transfer.width) {
+        state.gp0.transfer.x = 0;
+        state.gp0.transfer.y++;
+        x = state.gp0.transfer.x0;
+        y++;
     }
 
-    if (state.gp0.buffer[5] >= state.gp0.buffer[3]) {
+    hi = memory::load_u16_le(state.vram + y * 2048 + 2 * x);
+    state.gp0.transfer.x++;
+    if (state.gp0.transfer.x >= state.gp0.transfer.width) {
+        state.gp0.transfer.x = 0;
+        state.gp0.transfer.y++;
+    }
+
+    if (state.gp0.transfer.y >= state.gp0.transfer.height) {
         debugger::info(Debugger::GPU, "VRAM to CPU transfer complete");
         state.gp0.state = GP0_COMMAND;
         state.gp0.count = 0;
@@ -185,6 +196,8 @@ void read_gpuread(uint32_t *val) {
         state.hw.gpustat |= GPUSTAT_DMA_READY;
         state.hw.gpustat &= ~GPUSTAT_COPY_READY;
     }
+
+    *val = (uint32_t)lo | ((uint32_t)hi << 16);
 }
 
 void read_gpustat(uint32_t *val) {
@@ -496,16 +509,20 @@ static void copy_rectangle_cpu_to_vram(void) {
     uint16_t width = (state.gp0.buffer[2] >> 0) & UINT32_C(0xffff);;
     uint16_t height = (state.gp0.buffer[2] >> 16) & UINT32_C(0xffff);;
 
-    debugger::info(Debugger::GPU, "CPU to VRAM transfer size: {}",
-                   2 * width * height);
-
     state.gp0.state = GP0_COPY_CPU_TO_VRAM;
-    state.gp0.buffer[0] = x & UINT16_C(0x3ff);
-    state.gp0.buffer[1] = y & UINT16_C(0x1ff);
-    state.gp0.buffer[2] = ((width - 1) & UINT16_C(0x3ff)) + 1;
-    state.gp0.buffer[3] = ((height - 1) & UINT16_C(0x1ff)) + 1;
-    state.gp0.buffer[4] = 0;
-    state.gp0.buffer[5] = 0;
+    state.gp0.transfer.x0 = x & UINT16_C(0x3ff);
+    state.gp0.transfer.y0 = y & UINT16_C(0x1ff);
+    state.gp0.transfer.width = ((width - 1) & UINT16_C(0x3ff)) + 1;
+    state.gp0.transfer.height = ((height - 1) & UINT16_C(0x1ff)) + 1;
+    state.gp0.transfer.x = 0;
+    state.gp0.transfer.y = 0;
+
+    debugger::info(Debugger::GPU, "CPU to VRAM transfer size: {}",
+                   2 * state.gp0.transfer.width * state.gp0.transfer.height);
+    debugger::info(Debugger::GPU, "  x: {}", x);
+    debugger::info(Debugger::GPU, "  y: {}", y);
+    debugger::info(Debugger::GPU, "  width: {}", state.gp0.transfer.width);
+    debugger::info(Debugger::GPU, "  height: {}", state.gp0.transfer.height);
 }
 
 static void copy_rectangle_vram_to_cpu(void) {
@@ -519,12 +536,12 @@ static void copy_rectangle_vram_to_cpu(void) {
 
     state.hw.gpustat |= GPUSTAT_COPY_READY;
     state.gp0.state = GP0_COPY_VRAM_TO_CPU;
-    state.gp0.buffer[0] = x & UINT16_C(0x3ff);
-    state.gp0.buffer[1] = y & UINT16_C(0x1ff);
-    state.gp0.buffer[2] = ((width - 1) & UINT16_C(0x3ff)) + 1;
-    state.gp0.buffer[3] = ((height - 1) & UINT16_C(0x1ff)) + 1;
-    state.gp0.buffer[4] = 0;
-    state.gp0.buffer[5] = 0;
+    state.gp0.transfer.x0 = x & UINT16_C(0x3ff);
+    state.gp0.transfer.y0 = y & UINT16_C(0x1ff);
+    state.gp0.transfer.width = ((width - 1) & UINT16_C(0x3ff)) + 1;
+    state.gp0.transfer.height = ((height - 1) & UINT16_C(0x1ff)) + 1;
+    state.gp0.transfer.x = 0;
+    state.gp0.transfer.y = 0;
 }
 
 static void draw_mode_setting(void) {
@@ -1028,18 +1045,29 @@ static void gp0_polyline(uint32_t val) {
 }
 
 static void gp0_copy_cpu_to_vram(uint32_t val) {
-    uint32_t x = (state.gp0.buffer[0] + state.gp0.buffer[4]) & UINT16_C(0x3ff);
-    uint32_t y = (state.gp0.buffer[1] + state.gp0.buffer[5]) & UINT16_C(0x1ff);
-    memory::store_u32_le(state.vram + y * 2048 + 2 * x, val);
+    uint32_t x = (state.gp0.transfer.x0 + state.gp0.transfer.x) & UINT16_C(0x3ff);
+    uint32_t y = (state.gp0.transfer.y0 + state.gp0.transfer.y) & UINT16_C(0x1ff);
+    uint16_t lo = val >> 0;
+    uint16_t hi = val >> 16;
 
-    state.gp0.buffer[4] += 2;
-
-    if (state.gp0.buffer[4] >= state.gp0.buffer[2]) {
-        state.gp0.buffer[4] = 0;
-        state.gp0.buffer[5]++;
+    memory::store_u16_le(state.vram + y * 2048 + 2 * x, lo);
+    state.gp0.transfer.x++;
+    x++;
+    if (state.gp0.transfer.x >= state.gp0.transfer.width) {
+        state.gp0.transfer.x = 0;
+        state.gp0.transfer.y++;
+        x = state.gp0.transfer.x0;
+        y++;
     }
 
-    if (state.gp0.buffer[5] >= state.gp0.buffer[3]) {
+    memory::store_u16_le(state.vram + y * 2048 + 2 * x, hi);
+    state.gp0.transfer.x++;
+    if (state.gp0.transfer.x >= state.gp0.transfer.width) {
+        state.gp0.transfer.x = 0;
+        state.gp0.transfer.y++;
+    }
+
+    if (state.gp0.transfer.y >= state.gp0.transfer.height) {
         debugger::info(Debugger::GPU, "CPU to VRAM transfer complete");
         state.gp0.state = GP0_COMMAND;
         state.gp0.count = 0;

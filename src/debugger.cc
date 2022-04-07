@@ -1,6 +1,7 @@
 
 #include <iomanip>
 #include <iostream>
+#include <toml++/toml.h>
 
 #include <psx/debugger.h>
 
@@ -22,7 +23,7 @@ fmt::text_style debugger::VerbosityStyle[] = {
 /* Class */
 
 Debugger::Debugger()
-    : cpu_trace(0x10000)
+    : cpu_trace(0x10000), config_file("debugger.ini")
 {
     for (int label = 0; label < Debugger::LabelCount; label++) {
         verbosity[label] = Debugger::Info;
@@ -52,6 +53,62 @@ Debugger::Debugger()
 }
 
 Debugger::~Debugger() {
+}
+
+/* Caching */
+
+void Debugger::load_settings(std::string config_file) {
+    if (config_file == "")
+        config_file = this->config_file;
+    try {
+        toml::table config = toml::parse_file(config_file);
+        auto verbosity = config["verbosity"];
+        auto watchpoints = config["watchpoints"];
+        auto breakpoints = config["breakpoints"];
+        this->config_file = config_file;
+
+        // Log verbosity.
+        if (verbosity) {
+            for (int label = 0; label < Debugger::LabelCount; label++) {
+                auto level = verbosity[debugger::LabelName[label]];
+                if (level == "debug")
+                    this->verbosity[label] = Debugger::Debug;
+                else if (level == "info")
+                    this->verbosity[label] = Debugger::Info;
+                else if (level == "warn")
+                    this->verbosity[label] = Debugger::Warn;
+                else if (level == "error")
+                    this->verbosity[label] = Debugger::Error;
+                else if (level == "none")
+                    this->verbosity[label] = Debugger::None;
+            }
+        }
+    } catch (const toml::parse_error &err) {
+    }
+}
+
+void Debugger::save_settings() {
+    if (config_file == "")
+        config_file = this->config_file;
+    try {
+
+        auto verbosity = toml::table();
+        char const *levels[] = {
+            "none", "error", "warn", "info", "debug",
+        };
+        for (int label = 0; label < Debugger::LabelCount; label++) {
+            verbosity.insert(debugger::LabelName[label],
+                levels[this->verbosity[label]]);
+        }
+        auto config = toml::table{
+            {"verbosity", verbosity }
+        };
+        std::ofstream os;
+        os.open(config_file);
+        os << config << std::endl;
+        os.close();
+    } catch (const toml::parse_error &err) {
+    }
 }
 
 /* Breakpoints */

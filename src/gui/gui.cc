@@ -589,7 +589,11 @@ static void ShowDebuggerWindow(void) {
             ImGui::SetNextItemWidth(100);
             std::string ComboID = "verbosity_" + label;
             ImGui::Combo(ComboID.c_str(), &verb, "none\0error\0warn\0info\0debug\0\0");
-            debugger::debugger.verbosity[label] = (Debugger::Verbosity)verb;
+
+            if (debugger::debugger.verbosity[label] != (Debugger::Verbosity)verb) {
+                debugger::debugger.verbosity[label] = (Debugger::Verbosity)verb;
+                debugger::debugger.save_settings();
+            }
             debugger::debugger.color[label].r = (uint8_t)(col[0] * 256.f);
             debugger::debugger.color[label].g = (uint8_t)(col[1] * 256.f);
             debugger::debugger.color[label].b = (uint8_t)(col[2] * 256.f);

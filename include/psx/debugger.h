@@ -42,6 +42,7 @@ public:
     typedef std::pair<uint32_t, uint32_t> TraceEntry;
 
     circular_buffer<TraceEntry> cpu_trace;
+    std::string config_file;
 
     struct Breakpoint {
         unsigned id;
@@ -116,6 +117,16 @@ public:
     bool check_watchpoint(uint64_t start_addr, uint64_t end_addr,
         unsigned *id = NULL);
 
+    /**
+     * Load debugger settings from save file.
+     */
+    void load_settings(std::string config_file = "");
+
+    /**
+     * Save debugger settings to save file provided
+     * to \ref load_settings.
+     */
+    void save_settings();
 
     std::map<unsigned, Debugger::Breakpoint>::iterator breakpointsBegin() {
         return _breakpoints.begin();

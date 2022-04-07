@@ -34,7 +34,8 @@ INCLUDE   := \
     src/interpreter \
     external/fmt/include \
     external/imgui \
-    external/cxxopts/include
+    external/cxxopts/include \
+    external/tomlplusplus/include
 
 DEFINE    := \
     ENABLE_RECOMPILER=$(ENABLE_RECOMPILER) \

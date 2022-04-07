@@ -6,6 +6,7 @@
 #include <cxxopts.hpp>
 #include <fmt/format.h>
 
+#include <psx/debugger.h>
 #include <psx/psx.h>
 #include <psx/memory.h>
 #include <psx/gui.h>
@@ -58,6 +59,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    debugger::debugger.load_settings();
     psx::state.load_bios(bios_contents);
     psx::state.load_cd_rom(cd_rom_contents);
     cd_rom_contents.close();

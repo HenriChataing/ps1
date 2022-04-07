@@ -38,7 +38,7 @@ void refreshVideoImage(void)
 
 /** Return the ID of a texture copied from the current video image, or
  * 0 if no vido image is set. */
-bool getVideoImage(size_t *width, size_t *height, GLuint *id)
+bool getVideoImage(ImageSelect select, size_t *width, size_t *height, GLuint *id)
 {
     std::lock_guard<std::mutex> lock(graphicsMutex);
 
@@ -51,9 +51,22 @@ bool getVideoImage(size_t *width, size_t *height, GLuint *id)
         }
 
         free((void *)VideoImage::data);
-        VideoImage::data = psx::hw::generate_display(
-            &VideoImage::buffer_width, &VideoImage::buffer_height,
-            &VideoImage::display_width, &VideoImage::display_height);
+        switch (select) {
+        case DISPLAY:
+            VideoImage::data = psx::hw::generate_display(
+                &VideoImage::buffer_width, &VideoImage::buffer_height,
+                &VideoImage::display_width, &VideoImage::display_height);
+            break;
+
+        case VRAM_24BIT:
+            return false;
+
+        default:
+            VideoImage::data = psx::hw::generate_display_vram_16bit(
+                &VideoImage::buffer_width, &VideoImage::buffer_height,
+                &VideoImage::display_width, &VideoImage::display_height);
+            break;
+        }
 
         if (VideoImage::data != NULL) {
             glGenTextures(1, &VideoImage::texture);

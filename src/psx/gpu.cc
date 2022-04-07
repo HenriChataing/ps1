@@ -158,6 +158,34 @@ void *generate_display(size_t *out_buffer_width, size_t *out_buffer_height,
     return framebuffer;
 }
 
+void *generate_display_vram_16bit(size_t *out_buffer_width,
+                                  size_t *out_buffer_height,
+                                  size_t *out_display_width,
+                                  size_t *out_display_height) {
+    unsigned width = 1024;
+    unsigned height = 512;
+    unsigned char *framebuffer = (unsigned char *)calloc(width * height, 3);
+    unsigned char *src_data = (unsigned char *)state.vram;
+    unsigned char *dst_data = framebuffer;
+
+    for (unsigned y = 0; y < height; y++, src_data += 2048) {
+        for (unsigned x = 0; x < width; x++, dst_data += 3) {
+            uint16_t rgb =
+                ((uint16_t)(src_data[2 * x + 0]) << 0) |
+                ((uint16_t)(src_data[2 * x + 1]) << 8);
+            dst_data[0] = ((rgb >>  0) & 0x1f) << 3;
+            dst_data[1] = ((rgb >>  5) & 0x1f) << 3;
+            dst_data[2] = ((rgb >> 10) & 0x1f) << 3;
+        }
+    }
+
+    *out_buffer_width = width;
+    *out_buffer_height = height;
+    *out_display_width = width;
+    *out_display_height = height;
+    return framebuffer;
+}
+
 void read_gpuread(uint32_t *val) {
     debugger::debug(Debugger::GPU, "gpuread -> {:08x}", *val);
 
@@ -1069,6 +1097,8 @@ static void gp0_copy_cpu_to_vram(uint32_t val) {
 
     if (state.gp0.transfer.y >= state.gp0.transfer.height) {
         debugger::info(Debugger::GPU, "CPU to VRAM transfer complete");
+        refreshVideoImage();
+        psx::halt("copy");
         state.gp0.state = GP0_COMMAND;
         state.gp0.count = 0;
         state.hw.gpustat |= GPUSTAT_CMD_READY;

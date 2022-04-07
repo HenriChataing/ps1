@@ -65,6 +65,11 @@ void hblank_event();
 void *generate_display(size_t *out_buffer_width, size_t *out_buffer_height,
                        size_t *out_display_width, size_t *out_display_height);
 
+void *generate_display_vram_16bit(size_t *out_buffer_width,
+                                  size_t *out_buffer_height,
+                                  size_t *out_display_width,
+                                  size_t *out_display_height);
+
 }; /* namespace psx::hw */
 
 #endif /* _HW_H_INCLUDED_ */

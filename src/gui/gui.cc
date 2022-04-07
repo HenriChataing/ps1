@@ -312,7 +312,8 @@ static void ShowScreen(bool *show_screen) {
     size_t height;
     GLuint texture;
 
-    if (getVideoImage(&width, &height, &texture)) {
+    ImageSelect select = ImageSelect::VRAM_16BIT;
+    if (getVideoImage(select, &width, &height, &texture)) {
         ImGui::SetNextWindowSize(ImVec2(width + 15, height + 35));
         ImGui::Begin("Screen", show_screen);
         ImVec2 pos = ImGui::GetCursorScreenPos();

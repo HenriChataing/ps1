@@ -40,12 +40,16 @@ void write_timer_value(int timer, uint16_t val);
 void write_timer_mode(int timer, uint16_t val);
 void write_timer_target(int timer, uint16_t val);
 
+void read_dx_madr(int channel, uint32_t *val);
 void write_dx_madr(int channel, uint32_t val);
 void write_dx_bcr(int channel, uint32_t val);
+void read_dx_chcr(int channel, uint32_t *val);
 void write_d2_chcr(uint32_t val);
 void write_d6_chcr(uint32_t val);
 void write_dx_chcr(int channel, uint32_t val);
+void read_dpcr(uint32_t *val);
 void write_dpcr(uint32_t val);
+void read_dicr(uint32_t *val);
 void write_dicr(uint32_t val);
 
 void read_cdrom_index(uint32_t *val);

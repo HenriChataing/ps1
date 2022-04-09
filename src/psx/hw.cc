@@ -265,13 +265,23 @@ static void check_dicr_irq_master_flag() {
     }
 }
 
+void read_dpcr(uint32_t *val) {
+    *val = state.hw.dpcr;
+    debugger::debug(Debugger::DMA, "dpcr -> {:08x}", *val);
+}
+
 void write_dpcr(uint32_t val) {
-    debugger::info(Debugger::DMA, "dpcr <- {:08x}", val);
+    debugger::debug(Debugger::DMA, "dpcr <- {:08x}", val);
     state.hw.dpcr = val;
 }
 
+void read_dicr(uint32_t *val) {
+    *val = state.hw.dicr;
+    debugger::debug(Debugger::DMA, "dicr -> {:08x}", *val);
+}
+
 void write_dicr(uint32_t val) {
-    debugger::info(Debugger::DMA, "dicr <- {:08x}", val);
+    debugger::debug(Debugger::DMA, "dicr <- {:08x}", val);
     state.hw.dicr &= ~UINT32_C(0xff0000);
     state.hw.dicr |=   val & UINT32_C(0x00ff0000);
     state.hw.dicr &= ~(val & UINT32_C(0x7f000000));
@@ -305,18 +315,28 @@ void write_dicr(uint32_t val) {
 #define DX_CHCR_BACKWARD                (UINT32_C(1) << 1)
 #define DX_CHCR_DIRECTION               (UINT32_C(1) << 0)
 
+void read_dx_madr(int channel, uint32_t *val) {
+    *val = state.hw.dma[channel].madr;
+    debugger::debug(Debugger::DMA, "d{}_madr -> {:08x}", channel, *val);
+}
+
 void write_dx_madr(int channel, uint32_t val) {
-    debugger::info(Debugger::DMA, "d{}_madr <- {:08x}", channel, val);
+    debugger::debug(Debugger::DMA, "d{}_madr <- {:08x}", channel, val);
     state.hw.dma[channel].madr = val & UINT32_C(0x00ffffff);
 }
 
 void write_dx_bcr(int channel, uint32_t val) {
-    debugger::info(Debugger::DMA, "d{}_bcr <- {:08x}", channel, val);
+    debugger::debug(Debugger::DMA, "d{}_bcr <- {:08x}", channel, val);
     state.hw.dma[channel].bcr = val;
 }
 
+void read_dx_chcr(int channel, uint32_t *val) {
+    *val = state.hw.dma[channel].chcr;
+    debugger::debug(Debugger::DMA, "d{}_chcr -> {:08x}", channel, *val);
+}
+
 void write_d2_chcr(uint32_t val) {
-    debugger::info(Debugger::DMA, "d2_chcr <- {:08x}", val);
+    debugger::debug(Debugger::DMA, "d2_chcr <- {:08x}", val);
     state.hw.dma[2].chcr = val;
 
     bool started = (val & DX_CHCR_BUSY) != 0;
@@ -332,9 +352,11 @@ void write_d2_chcr(uint32_t val) {
     bool from_ram = (chcr & DX_CHCR_DIRECTION) != 0;
     uint32_t sync_mode = (chcr >> 9) & UINT32_C(0x3);
 
-    debugger::debug(Debugger::DMA, "GPU DMA started");
-    debugger::debug(Debugger::DMA, "  address: {:08x}", addr);
-    debugger::debug(Debugger::DMA, "  sync_mode: {}", sync_mode);
+    debugger::info(Debugger::DMA, "GPU DMA");
+    debugger::info(Debugger::DMA, "  address: {:08x}", addr);
+    debugger::info(Debugger::DMA, "  sync_mode: {}", sync_mode);
+    debugger::info(Debugger::DMA, "  direction: {}",
+        from_ram ? "from RAM" : "to RAM");
 
     if (sync_mode == 1) {
         // Block mode.
@@ -349,9 +371,9 @@ void write_d2_chcr(uint32_t val) {
             psx::halt("invalid block size");
         }
 
-        debugger::debug(Debugger::DMA, "  block_size: {}", block_size);
-        debugger::debug(Debugger::DMA, "  block_count: {}", block_count);
-        debugger::debug(Debugger::DMA, "  total_len: {}", total_len);
+        debugger::info(Debugger::DMA, "  block_size: {}", block_size);
+        debugger::info(Debugger::DMA, "  block_count: {}", block_count);
+        debugger::info(Debugger::DMA, "  total_len: {}", total_len);
 
         if ((addr + total_len) > UINT32_C(0x200000)) {
             psx::halt("invalid block address");
@@ -418,7 +440,7 @@ void write_d2_chcr(uint32_t val) {
 }
 
 void write_d6_chcr(uint32_t val) {
-    debugger::info(Debugger::DMA, "d6_chcr <- {:08x}", val);
+    debugger::debug(Debugger::DMA, "d6_chcr <- {:08x}", val);
     state.hw.dma[6].chcr = (val & UINT32_C(0x51000000)) | UINT32_C(0x2);
 
     bool started = (val & DX_CHCR_START) != 0;
@@ -436,9 +458,9 @@ void write_d6_chcr(uint32_t val) {
     uint32_t start_addr = state.hw.dma[6].madr;
     uint32_t end_addr = start_addr - (nr_words * 4);
 
-    debugger::debug(Debugger::DMA, "OTC DMA started");
-    debugger::debug(Debugger::DMA, "  address: {:08x}", start_addr);
-    debugger::debug(Debugger::DMA, "  nr_words: {}", nr_words);
+    debugger::info(Debugger::DMA, "OTC DMA");
+    debugger::info(Debugger::DMA, "  address: {:08x}", start_addr);
+    debugger::info(Debugger::DMA, "  nr_words: {}", nr_words);
 
     // Initializes a linked list composed of words entries:
     //   item[23:0]    pointer to next item
@@ -469,7 +491,7 @@ void write_d6_chcr(uint32_t val) {
 }
 
 void write_dx_chcr(int channel, uint32_t val) {
-    debugger::info(Debugger::DMA, "d{}_chcr <- {:08x}", channel, val);
+    debugger::debug(Debugger::DMA, "d{}_chcr <- {:08x}", channel, val);
     state.hw.dma[channel].chcr = val;
 
     bool started = (val & DX_CHCR_BUSY) != 0;
@@ -484,11 +506,11 @@ void write_dx_chcr(int channel, uint32_t val) {
     bool from_ram = (chcr & DX_CHCR_DIRECTION) != 0;
     uint32_t sync_mode = (chcr >> 9) & UINT32_C(0x3);
 
-    debugger::debug(Debugger::DMA, "#{} DMA started", channel);
-    debugger::debug(Debugger::DMA, "  sync_mode: {}", sync_mode);
-    debugger::debug(Debugger::DMA, "  direction: {}",
+    debugger::info(Debugger::DMA, "#{} DMA", channel);
+    debugger::info(Debugger::DMA, "  sync_mode: {}", sync_mode);
+    debugger::info(Debugger::DMA, "  direction: {}",
         from_ram ? "from RAM" : "to RAM");
-    debugger::debug(Debugger::DMA, "  address:   {:08x}", madr);
+    debugger::info(Debugger::DMA, "  address:   {:08x}", madr);
 
     psx::halt(fmt::format("DMA started for channel {}", channel));
 }

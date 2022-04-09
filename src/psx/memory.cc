@@ -109,26 +109,11 @@ static bool load_u32_(uint32_t addr, uint32_t *val) {
     case UINT32_C(0x1f801110):  hw::read_timer_value(1, val); break;
 
     // DMA Control
-    case UINT32_C(0x1f8010a0):
-        *val = state.hw.dma[2].madr;
-        debugger::info(Debugger::DMA, "d2_madr -> {:08x}", *val);
-        break;
-    case UINT32_C(0x1f8010a8):
-        *val = state.hw.dma[2].chcr;
-        debugger::info(Debugger::DMA, "d2_chcr -> {:08x}", *val);
-        break;
-    case UINT32_C(0x1f8010e8):
-        *val = state.hw.dma[6].chcr;
-        debugger::info(Debugger::DMA, "d6_chcr -> {:08x}", *val);
-        break;
-    case UINT32_C(0x1f8010f0):
-        *val = state.hw.dpcr;
-        debugger::info(Debugger::DMA, "dpcr -> {:08x}", *val);
-        break;
-    case UINT32_C(0x1f8010f4):
-        *val = state.hw.dicr;
-        debugger::info(Debugger::DMA, "dicr -> {:08x}", *val);
-        break;
+    case UINT32_C(0x1f8010a0):  hw::read_dx_madr(2, val); break;
+    case UINT32_C(0x1f8010a8):  hw::read_dx_chcr(2, val); break;
+    case UINT32_C(0x1f8010e8):  hw::read_dx_chcr(6, val); break;
+    case UINT32_C(0x1f8010f0):  hw::read_dpcr(val); break;
+    case UINT32_C(0x1f8010f4):  hw::read_dicr(val); break;
 
     // GPU I/O Ports
     case UINT32_C(0x1f801810):  hw::read_gpuread(val); break;

@@ -1123,7 +1123,7 @@ void write_gpu0(uint32_t val) {
 }
 
 void write_gpu1(uint32_t val) {
-    debugger::info(Debugger::GPU, "gpu1 <- {:08x}", val);
+    debugger::debug(Debugger::GPU, "gpu1 <- {:08x}", val);
 
     uint8_t op_code = (val >> 24) & UINT8_C(0x3f);
     debugger::info(Debugger::GPU, "{}", gp1_commands[op_code].name);

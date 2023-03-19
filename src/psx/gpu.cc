@@ -1098,7 +1098,6 @@ static void gp0_copy_cpu_to_vram(uint32_t val) {
     if (state.gp0.transfer.y >= state.gp0.transfer.height) {
         debugger::info(Debugger::GPU, "CPU to VRAM transfer complete");
         refreshVideoImage();
-        psx::halt("copy");
         state.gp0.state = GP0_COMMAND;
         state.gp0.count = 0;
         state.hw.gpustat |= GPUSTAT_CMD_READY;
@@ -1151,7 +1150,7 @@ void hblank_event() {
     bool pal = state.gpu.video_mode != 0;
     bool interlace = state.gpu.vertical_interlace;
     bool resolution = state.gpu.vertical_resolution != 0;
-    unsigned scanline_vblank = 240;
+    unsigned scanline_vblank = 240; // TODO computed from vertical resolution
     unsigned scanline_endframe = pal ? 314 : 263;
 
     unsigned long cpu_clock = state.cycles;

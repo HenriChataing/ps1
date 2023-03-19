@@ -142,12 +142,12 @@ void write_i_mask(uint32_t val) {
     check_ip2();
 }
 
-#define TIMER_MODE_EQ_MAX       (UINT32_C(1) << 12)
+#define TIMER_MODE_EQ_FFFF      (UINT32_C(1) << 12)
 #define TIMER_MODE_EQ_TARGET    (UINT32_C(1) << 11)
-#define TIMER_MODE_INT_DISABLE  (UINT32_C(1) << 10)
+#define TIMER_MODE_INT_ENABLE   (UINT32_C(1) << 10)
 #define TIMER_MODE_INT_TOGGLE   (UINT32_C(1) << 7)
 #define TIMER_MODE_INT_REPEAT   (UINT32_C(1) << 6)
-#define TIMER_MODE_INT_MAX      (UINT32_C(1) << 5)
+#define TIMER_MODE_INT_FFFF     (UINT32_C(1) << 5)
 #define TIMER_MODE_INT_TARGET   (UINT32_C(1) << 4)
 #define TIMER_MODE_RST_TARGET   (UINT32_C(1) << 3)
 #define TIMER_MODE_SYNC_ENABLE  (UINT32_C(1) << 0)
@@ -177,20 +177,158 @@ void write_i_mask(uint32_t val) {
 //  11    Reached Target Value    (0=No, 1=Yes) (Reset after Reading)        (R)
 //  12    Reached FFFFh Value     (0=No, 1=Yes) (Reset after Reading)        (R)
 
-static void timer0_event() {
-}
-
-static void timer1_event() {
-}
-
-static void timer2_event() {
-}
+static void timer0_event();
+static void timer1_event();
+static void timer2_event();
 
 static void (*timer_event[3])() = {
     timer0_event,
     timer1_event,
     timer2_event,
 };
+
+const uint32_t cpu_clock        = UINT32_C(0x80000000); // 1
+const uint32_t cpu_div8_clock   = UINT32_C(0x10000000); // 1 / 8
+const uint32_t p256_clock       = UINT32_C(0x141d41d4); // 11 / (7 * 10)
+const uint32_t p320_clock       = UINT32_C(0x19249249); // 11 / (7 * 8)
+const uint32_t p368_clock       = UINT32_C(0x1cbc14e5); // 11 / (7 * 7)
+const uint32_t p512_clock       = UINT32_C(0x283a83a8); // 11 / (7 * 5)
+const uint32_t p640_clock       = UINT32_C(0x32492492); // 11 / (7 * 4)
+
+// PAL:  3406 video cycles per scanline (or 3406.1 or so?)
+// NTSC: 3413 video cycles per scanline (or 3413.6 or so?)
+const uint32_t pal_hblank_clock  = UINT32_C(0x000f1e42); // 11 / (7 * 3406)
+const uint32_t ntsc_hblank_clock = UINT32_C(0x000f1651); // 11 / (7 * 3413)
+
+// PAL:  314 scanlines per frame (13Ah)
+// NTSC: 263 scanlines per frame (107h)
+const uint32_t pal_vblank_clock  = UINT32_C(0x80000000);
+const uint32_t ntsc_vblank_clock = UINT32_C(0x80000000);
+
+// Called when the conditions for triggering a timer interrup tare met.
+static void trigger_timer_irq(psx::timer *timer, timer::irq_mode irq_mode, uint32_t irq) {
+    if (timer->mode & TIMER_MODE_INT_ENABLE) {
+        set_i_stat(irq);
+    }
+
+    switch (irq_mode) {
+    case timer::irq_mode::ONE_SHOT: timer->mode &= ~TIMER_MODE_INT_ENABLE; break;
+    case timer::irq_mode::PULSE: break;
+    case timer::irq_mode::TOGGLE: timer->mode ^= TIMER_MODE_INT_ENABLE; break;
+    }
+}
+
+static void schedule_timer0_event(
+    psx::timer *timer,
+    bool sync_enable,
+    uint8_t sync_mode,
+    uint8_t reset_mode,
+    timer::irq_mode irq_mode) {
+    psx::halt("timer 0 not supported");
+}
+
+static void schedule_timer1_event(
+    psx::timer *timer,
+    bool sync_enable,
+    uint8_t sync_mode,
+    uint8_t reset_mode,
+    timer::irq_mode irq_mode) {
+    psx::halt("timer 1 not supported");
+}
+
+static void schedule_timer2_event(
+    psx::timer *timer,
+    bool sync_enable,
+    uint8_t sync_mode,
+    uint8_t reset_mode,
+    timer::irq_mode irq_mode) {
+
+    // Synchronization Modes:
+    //   0 or 3 = Stop counter at current value (forever, no h/v-blank start)
+    //   1 or 2 = Free Run (same as when Synchronization Disabled)
+    if (sync_enable) {
+        psx::halt("counter 2 sync mode not supported");
+    }
+
+    bool irq_target = (timer->mode & TIMER_MODE_INT_TARGET) != 0;
+    bool irq_ffff   = (timer->mode & TIMER_MODE_INT_FFFF) != 0;
+
+    switch (timer->trigger) {
+    case timer::trigger::NONE:
+    default:
+        break;
+
+    case timer::trigger::TARGET:
+        timer->mode |= TIMER_MODE_EQ_TARGET;
+        if (irq_target) {
+            trigger_timer_irq(timer, irq_mode, I_STAT_TMR2);
+        }
+        if (reset_mode == 1) {
+            timer->counter.clear(state.cycles);
+        }
+        break;
+
+    case timer::trigger::FFFF:
+        timer->mode |= TIMER_MODE_EQ_FFFF;
+        if (irq_ffff) {
+            trigger_timer_irq(timer, irq_mode, I_STAT_TMR2);
+        }
+        if (reset_mode == 0) {
+            timer->counter.clear(state.cycles);
+        }
+        break;
+    }
+
+    bool target_trigger = reset_mode == 1 || irq_target;
+    bool ffff_trigger = reset_mode == 0 || irq_ffff;
+
+    uint64_t target_timeout = target_trigger ?
+        timer->counter.timeout(state.cycles, timer->target) : UINT64_MAX;
+    uint64_t ffff_timeout = ffff_trigger ?
+        timer->counter.timeout(state.cycles, 0xffff) : UINT64_MAX;
+
+    if (target_timeout != UINT64_MAX) {
+        state.schedule_event(target_timeout, timer2_event);
+        timer->trigger = timer::trigger::TARGET;
+    } else if (ffff_timeout != UINT64_MAX) {
+        state.schedule_event(ffff_timeout, timer2_event);
+        timer->trigger = timer::trigger::FFFF;
+    } else {
+        timer->trigger = timer::trigger::NONE;
+    }
+}
+
+static void timer0_event() {
+    psx::halt("timer0_event");
+}
+
+static void timer1_event() {
+    psx::halt("timer1_event");
+}
+
+static void timer2_event() {
+    psx::halt("timer2_event");
+}
+
+static void schedule_timer_event(int timer) {
+    bool sync_enable   = state.hw.timer[timer].mode & TIMER_MODE_SYNC_ENABLE;
+    uint8_t sync_mode  = (state.hw.timer[timer].mode >> 1) & 0x3;
+    uint8_t reset_mode = state.hw.timer[timer].mode & TIMER_MODE_RST_TARGET;
+
+    // Interrupt mode.
+    // 6  IRQ Once/Repeat Mode    (0=One-shot, 1=Repeatedly)
+    // 7  IRQ Pulse/Toggle Mode   (0=Short Bit10=0 Pulse, 1=Toggle Bit10 on/off)
+    timer::irq_mode irq_mode =
+        (state.hw.timer[timer].mode & TIMER_MODE_INT_REPEAT) == 0 ? timer::irq_mode::ONE_SHOT :
+        (state.hw.timer[timer].mode & TIMER_MODE_INT_TOGGLE) == 0 ? timer::irq_mode::PULSE :
+                                                                    timer::irq_mode::TOGGLE;
+
+    switch (timer) {
+    case 0: schedule_timer0_event(state.hw.timer + 0, sync_enable, sync_mode, reset_mode, irq_mode); break;
+    case 1: schedule_timer1_event(state.hw.timer + 1, sync_enable, sync_mode, reset_mode, irq_mode); break;
+    case 2: schedule_timer2_event(state.hw.timer + 2, sync_enable, sync_mode, reset_mode, irq_mode); break;
+    }
+}
 
 void read_timer_value(int timer, uint32_t *val) {
     *val = state.cycles & UINT64_C(0xffff);
@@ -200,21 +338,93 @@ void read_timer_value(int timer, uint32_t *val) {
 
 void write_timer_value(int timer, uint16_t val) {
     debugger::info(Debugger::Timer, "tim{}_value <- {:04x}", timer, val);
-    state.cancel_event(timer_event[timer]);
-    state.hw.timer[timer].value = 0;
-    state.hw.timer[timer].last_counter_update = state.cycles;
-/*    state.schedule_event();*/
+
+    switch (state.hw.timer[timer].trigger) {
+    case timer::trigger::HBLANK_START:
+    case timer::trigger::VBLANK_START:
+    case timer::trigger::TARGET:
+    case timer::trigger::FFFF:
+        state.cancel_event(timer_event[timer]);
+        state.hw.timer[timer].trigger = timer::trigger::NONE;
+        [[fallthrough]];
+
+    case timer::trigger::NONE:
+        state.hw.timer[timer].counter.write(state.cycles, val);
+        schedule_timer_event(timer);
+        break;
+
+    // HBLANK_END, VBLANK_END are only used when the counter is paused.
+    // In this case just update the counter value and let the trigger occur.
+    case timer::trigger::HBLANK_END:
+    case timer::trigger::VBLANK_END:
+        state.hw.timer[timer].counter.write(state.cycles, val);
+        break;
+    }
 }
 
 void write_timer_mode(int timer, uint16_t val) {
     debugger::info(Debugger::Timer, "tim{}_mode <- {:04x}", timer, val);
     state.hw.timer[timer].mode &= ~UINT32_C(0x3ff);
     state.hw.timer[timer].mode |= val & UINT32_C(0x3ff);
+    state.hw.timer[timer].mode |= TIMER_MODE_INT_ENABLE;
+
+    // Clock Source (0-3, see list below)
+    //   Counter 0:  0 or 2 = System Clock,  1 or 3 = Dotclock
+    //   Counter 1:  0 or 2 = System Clock,  1 or 3 = Hblank
+    //   Counter 2:  0 or 1 = System Clock,  2 or 3 = System Clock/8
+    uint16_t clock_src = (val >> 8) & 0x3;
+    uint32_t multiplier = 0;
+    uint32_t dot_clock = p256_clock;
+    uint32_t hblank_clock = pal_hblank_clock;
+
+    switch (clock_src) {
+    case 0: multiplier = cpu_clock; break;
+    case 1:
+        multiplier = timer == 0 ? dot_clock
+                   : timer == 1 ? hblank_clock
+                                : cpu_clock;
+        break;
+    case 2:
+        multiplier = timer == 2 ? cpu_div8_clock
+                                : cpu_clock;
+        break;
+    case 3:
+        multiplier = timer == 0 ? dot_clock
+                   : timer == 1 ? hblank_clock
+                                : cpu_div8_clock;
+        break;
+    }
+
+    state.cancel_event(timer_event[timer]);
+    state.hw.timer[timer].trigger = timer::trigger::NONE;
+    state.hw.timer[timer].counter.configure(cpu_clock, multiplier);
+    schedule_timer_event(timer);
 }
 
 void write_timer_target(int timer, uint16_t val) {
     debugger::info(Debugger::Timer, "tim{}_target <- {:04x}", timer, val);
-    state.hw.timer[timer].target = 0;
+
+    switch (state.hw.timer[timer].trigger) {
+    case timer::trigger::HBLANK_START:
+    case timer::trigger::VBLANK_START:
+    case timer::trigger::TARGET:
+    case timer::trigger::FFFF:
+        state.cancel_event(timer_event[timer]);
+        state.hw.timer[timer].trigger = timer::trigger::NONE;
+        [[fallthrough]];
+
+    case timer::trigger::NONE:
+        state.hw.timer[timer].target = val;
+        schedule_timer_event(timer);
+        break;
+
+    // HBLANK_END, VBLANK_END are only used when the counter is paused.
+    // In this case just update the target and let the trigger occur.
+    case timer::trigger::HBLANK_END:
+    case timer::trigger::VBLANK_END:
+        state.hw.timer[timer].target = val;
+        break;
+    }
 }
 
 //  0-2   DMA0, MDECin  Priority      (0..7; 0=Highest, 7=Lowest)

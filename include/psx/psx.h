@@ -155,6 +155,76 @@ struct cp2_registers {
 // Check that register aliases are correctly packed.
 static_assert(sizeof(cp2_registers) == (64 * sizeof(uint32_t)));
 
+/// Represent a hardware counter incrementing at a fraction frequency
+/// of the CPU clock.
+struct counter {
+    /// Clock multiplier in U0.32 format.
+    /// The counter clock frequency is that of the CPU clock multiplied
+    /// by this value. If 0, the counter is not incremented but
+    /// stays constant.
+    uint32_t multiplier;
+    /// Last CPU clock measurement.
+    uint64_t base_cpu_clock;
+    /// Last clock measurement, in fixed point format
+    /// with precision U32.32.
+    uint64_t base_counter;
+    /// Counter paused.
+    bool paused;
+
+    // Read the counter value at the current cpu_clock.
+    uint32_t read(uint64_t cpu_clock) {
+        uint64_t offset = paused ? 0 : (cpu_clock - base_cpu_clock) * multiplier;
+        return (base_counter + (offset << 32)) >> 32;
+    }
+
+    // Pause the counter at the current cpu_clock.
+    void pause(uint64_t cpu_clock) {
+        uint64_t offset = paused ? 0 : (cpu_clock - base_cpu_clock) * multiplier;
+        base_counter += offset;
+        base_cpu_clock = cpu_clock;
+        paused = true;
+    }
+
+    // Unpause the counter at the current cpu_clock.
+    void unpause(uint64_t cpu_clock) {
+        base_cpu_clock = cpu_clock;
+        paused = false;
+    }
+
+    // Write the counter at the current cpu_clock.
+    void write(uint64_t cpu_clock, uint32_t counter) {
+        base_counter = (uint64_t)counter << 32;
+        base_cpu_clock = cpu_clock;
+    }
+
+    // Clear the counter at the current cpu_clock.
+    void clear(uint64_t cpu_clock) {
+        base_counter = 0;
+        base_cpu_clock = cpu_clock;
+    }
+
+    // Set the multiplier for this counter at the current cpu_clock.
+    void configure(uint64_t cpu_clock, uint32_t multiplier) {
+        base_cpu_clock = cpu_clock;
+        base_counter = 0;
+        paused = false;
+        this->multiplier = multiplier;
+    }
+
+    /// Return the value of the cpu clock at which the target counter
+    /// value is reached, or UINT64_MAX if the target is in the past.
+    uint64_t timeout(uint64_t cpu_clock, uint32_t target_counter) const {
+        uint64_t offset = paused ? 0 : (cpu_clock - base_cpu_clock) * multiplier;
+        uint64_t current_counter_shl32 = base_counter + offset;
+        uint64_t target_counter_shl32 = (uint64_t)target_counter << 32;
+        if (current_counter_shl32 >= target_counter_shl32) {
+            return UINT64_MAX;
+        }
+        uint64_t delay = (target_counter_shl32 - current_counter_shl32) / multiplier;
+        return cpu_clock + delay;
+    }
+};
+
 struct cdrom_registers {
     uint8_t index;
     uint8_t command;
@@ -246,6 +316,39 @@ struct gp0_registers {
     enum gp0_state state;
 };
 
+
+// State of a timer.
+struct timer {
+    // Enumerate the different triggers for a timer.
+    // The trigger corresponds to the event for which the
+    // scheduled timer is set. The timer is always configured for the
+    // trigger that occurs first.
+    enum trigger {
+        NONE, // The timer is stopped
+        HBLANK_START, // Triggered at next Hblank start
+        HBLANK_END, // Triggered at next Hblank start
+        VBLANK_START, // Triggered at next Vblank start
+        VBLANK_END, // Triggered at next Vblank start
+        TARGET, // Triggered when timer target is reached
+        FFFF, // Triggered when the timer counter reaches 0xffff
+    };
+
+    // Enumerate the timer interrupt modes.
+    // The mode is determined by the bits 6-7 of the mode register.
+    enum irq_mode {
+        ONE_SHOT, // The interrupt is disabled after triggering once
+                  // and reenabled by writing the mode register.
+        PULSE, // The interrupt is triggered repeatedly.
+        TOGGLE, // The interrupt is triggered on every 2nd time.
+    };
+
+    uint16_t mode;
+    uint16_t target;
+    psx::counter counter;
+    bool irq_triggered;
+    trigger trigger;
+};
+
 struct hw_registers {
     // Memory Control
     uint32_t expansion_1_base_addr;
@@ -285,13 +388,7 @@ struct hw_registers {
     uint32_t dicr;
 
     // Timers
-    struct {
-      uint16_t value;
-      uint16_t mode;
-      uint16_t target;
-
-      unsigned long last_counter_update;
-    } timer[3];
+    psx::timer timer[3];
 
     // SPU Control
     uint16_t main_volume_left;
@@ -347,10 +444,10 @@ struct state {
     uint8_t *cd_rom;
     size_t cd_rom_size;
 
-    unsigned long cycles;
+    uint64_t cycles;
     enum cpu_state cpu_state;
     uint32_t jump_address;
-    unsigned long next_event;
+    uint64_t next_event;
     struct event *event_queue;
     bool delay_slot;
     psx::memory::Bus *bus;

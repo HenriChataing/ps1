@@ -40,6 +40,55 @@ static void glfwErrorCallback(int error, const char* description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+struct Field {
+    size_t width;
+    std::vector<char const *> values;
+
+    Field(size_t width) : width(width) {}
+    Field(size_t width, std::vector<char const*> values)
+        : width(width), values(std::move(values)) {}
+};
+
+template <typename T>
+struct Register {
+    // Register fields ordered in little endian bit order.
+    std::vector<std::pair<char const *, Field>> fields;
+
+    Register(std::initializer_list<std::pair<char const *, Field>> fields)
+        : fields(fields) {}
+
+    void Show(T value) {
+        T register_mask = std::numeric_limits<T>::max();
+        for (auto &[name, field] : fields) {
+            T field_mask = ((T(1) << field.width) - 1) & register_mask;
+            T field_value = value & field_mask;
+            value >>= field.width;
+            if (name == nullptr) {
+                continue;
+            } else if (field.values.size() > field_value) {
+                ImGui::Text("  %-30.30s%s\n",
+                    name, field.values[field_value]);
+            } else {
+                ImGui::Text("  %-30.30s%" PRIu64 "\n",
+                    name, (uint64_t)field_value);
+            }
+        }
+    }
+};
+
+template <typename T>
+static void ShowRegister(char const *name, T value) {
+    ImGui::Text("%-32.32s%0*" PRIx64 "\n",
+        name, std::numeric_limits<T>::digits / 4, (uint64_t)value);
+}
+
+template <typename T>
+static void ShowRegister(char const *name, T value, Register<T> &reg) {
+    ImGui::Text("%-32.32s%0*" PRIx64 "\n",
+        name, std::numeric_limits<T>::digits / 4, (uint64_t)value);
+    reg.Show(value);
+}
+
 static void ShowAnalytics(void) {
     // CPU freq is 33.87 MHz
     static float timeRatio[5 * 60] = { 0 };
@@ -146,24 +195,43 @@ static void ShowInterruptControlRegisters(void) {
 }
 
 static void ShowTimerRegisters(void) {
-    ImGui::Text("tim0_value                 %04" PRIx16 "\n",
-        psx::state.hw.timer[0].value);
-    ImGui::Text("tim0_mode                  %04" PRIx16 "\n",
-        psx::state.hw.timer[0].mode);
-    ImGui::Text("tim0_target                %04" PRIx16 "\n",
+    Register<uint16_t> mode_register{
+        { "sync_enable",    Field(1) },
+        { "sync_mode",      Field(2) },
+        { "reset_mode",     Field(1) },
+        { "irq_target",     Field(1) },
+        { "irq_ffff",       Field(1) },
+        { "irq_repeat",     Field(1) },
+        { "irq_toggle",     Field(1) },
+        { "clock_src",      Field(2) },
+        { "irq_enable",     Field(1) },
+        { "reached_target", Field(1) },
+        { "reached_ffff",   Field(1) },
+    };
+
+    ShowRegister<uint16_t>("tim0_value",
+        psx::state.hw.timer[0].counter.read(psx::state.cycles));
+    ShowRegister("tim0_target",
         psx::state.hw.timer[0].target);
-    ImGui::Text("tim1_value                 %04" PRIx16 "\n",
-        psx::state.hw.timer[1].value);
-    ImGui::Text("tim1_mode                  %04" PRIx16 "\n",
-        psx::state.hw.timer[1].mode);
-    ImGui::Text("tim1_target                %04" PRIx16 "\n",
+    ShowRegister("tim0_mode",
+        psx::state.hw.timer[0].mode,
+        mode_register);
+
+    ShowRegister<uint16_t>("tim1_value",
+        psx::state.hw.timer[1].counter.read(psx::state.cycles));
+    ShowRegister("tim1_target",
         psx::state.hw.timer[1].target);
-    ImGui::Text("tim2_value                 %04" PRIx16 "\n",
-        psx::state.hw.timer[2].value);
-    ImGui::Text("tim2_mode                  %04" PRIx16 "\n",
-        psx::state.hw.timer[2].mode);
-    ImGui::Text("tim2_target                %04" PRIx16 "\n",
+    ShowRegister("tim1_mode",
+        psx::state.hw.timer[1].mode,
+        mode_register);
+
+    ShowRegister<uint16_t>("tim2_value",
+        psx::state.hw.timer[2].counter.read(psx::state.cycles));
+    ShowRegister("tim2_target",
         psx::state.hw.timer[2].target);
+    ShowRegister("tim2_mode",
+        psx::state.hw.timer[2].mode,
+        mode_register);
 }
 
 static void ShowDMARegisters(void) {

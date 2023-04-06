@@ -298,18 +298,6 @@ static void schedule_timer2_event(
     }
 }
 
-static void timer0_event() {
-    psx::halt("timer0_event");
-}
-
-static void timer1_event() {
-    psx::halt("timer1_event");
-}
-
-static void timer2_event() {
-    psx::halt("timer2_event");
-}
-
 static void schedule_timer_event(int timer) {
     bool sync_enable   = state.hw.timer[timer].mode & TIMER_MODE_SYNC_ENABLE;
     uint8_t sync_mode  = (state.hw.timer[timer].mode >> 1) & 0x3;
@@ -328,6 +316,19 @@ static void schedule_timer_event(int timer) {
     case 1: schedule_timer1_event(state.hw.timer + 1, sync_enable, sync_mode, reset_mode, irq_mode); break;
     case 2: schedule_timer2_event(state.hw.timer + 2, sync_enable, sync_mode, reset_mode, irq_mode); break;
     }
+}
+
+static void timer0_event() {
+    schedule_timer_event(0);
+}
+
+static void timer1_event() {
+    schedule_timer_event(1);
+}
+
+static void timer2_event() {
+    debugger::warn(Debugger::Timer, "timer 2 event");
+    schedule_timer_event(2);
 }
 
 void read_timer_value(int timer, uint32_t *val) {

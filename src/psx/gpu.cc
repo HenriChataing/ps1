@@ -179,6 +179,56 @@ void *generate_display_vram_16bit(size_t *out_buffer_width,
         }
     }
 
+    // Draw the display area as a blue box.
+    // The window is estimated as 320x240 pixels, but the size
+    // may change depending on the displa
+    unsigned char *display_area = framebuffer +
+        3 * state.gpu.start_of_display_area_x +
+        3 * 1024 * state.gpu.start_of_display_area_y;
+    for (unsigned y = 0; y < 240; y++) {
+        display_area[y * 3 * 1024 + 0] = 0x00;
+        display_area[y * 3 * 1024 + 1] = 0x00;
+        display_area[y * 3 * 1024 + 2] = 0xff;
+        display_area[y * 3 * 1024 + 3 * 319 + 0] = 0x00;
+        display_area[y * 3 * 1024 + 3 * 319 + 1] = 0x00;
+        display_area[y * 3 * 1024 + 3 * 319 + 2] = 0xff;
+    }
+    for (unsigned x = 0; x < 320; x++) {
+        display_area[x * 3 + 0] = 0x00;
+        display_area[x * 3 + 1] = 0x00;
+        display_area[x * 3 + 2] = 0xff;
+        display_area[x * 3 + 3 * 1024 * 239 + 0] = 0x00;
+        display_area[x * 3 + 3 * 1024 * 239 + 1] = 0x00;
+        display_area[x * 3 + 3 * 1024 * 239 + 2] = 0xff;
+    }
+
+    // Draw the drawing area as a red box.
+    // The window is estimated as 320x240 pixels, but the size
+    // may change depending on the displa
+    unsigned char *drawing_area = framebuffer +
+        3 * state.gpu.drawing_area_x1 +
+        3 * 1024 * state.gpu.drawing_area_y1;
+    uint16_t drawing_area_width =
+        state.gpu.drawing_area_x2 - state.gpu.drawing_area_x1;
+    uint16_t drawing_area_height =
+        state.gpu.drawing_area_y2 - state.gpu.drawing_area_y1;
+    for (unsigned y = 0; y < drawing_area_height; y++) {
+        drawing_area[y * 3 * 1024 + 0] = 0xff;
+        drawing_area[y * 3 * 1024 + 1] = 0x00;
+        drawing_area[y * 3 * 1024 + 2] = 0x00;
+        drawing_area[y * 3 * 1024 + 3 * drawing_area_width + 0] = 0xff;
+        drawing_area[y * 3 * 1024 + 3 * drawing_area_width + 1] = 0x00;
+        drawing_area[y * 3 * 1024 + 3 * drawing_area_width + 2] = 0x00;
+    }
+    for (unsigned x = 0; x < drawing_area_width; x++) {
+        drawing_area[x * 3 + 0] = 0xff;
+        drawing_area[x * 3 + 1] = 0x00;
+        drawing_area[x * 3 + 2] = 0x00;
+        drawing_area[x * 3 + 3 * 1024 * drawing_area_height + 0] = 0xff;
+        drawing_area[x * 3 + 3 * 1024 * drawing_area_height + 1] = 0x00;
+        drawing_area[x * 3 + 3 * 1024 * drawing_area_height + 2] = 0x00;
+    }
+
     *out_buffer_width = width;
     *out_buffer_height = height;
     *out_display_width = width;
@@ -259,6 +309,15 @@ struct vertex_attributes {
     uint8_t s;
     uint8_t t;
 };
+
+/// Apply texture window mapping to a texture coordinate.
+/// Texcoord = (Texcoord AND (NOT (Mask*8))) OR ((Offset AND Mask)*8)
+static void texture_mapping(uint16_t *s, uint16_t *t) {
+    *s = (*s & ~(state.gpu.texture_window_mask_x << 3)) |
+         ((state.gpu.texture_window_offset_x & state.gpu.texture_window_mask_x) << 3);
+    *t = (*t & ~(state.gpu.texture_window_mask_y << 3)) |
+         ((state.gpu.texture_window_offset_y & state.gpu.texture_window_mask_y) << 3);
+}
 
 /// Render a single pixel.
 /// Color depth is always 16bit in drawing area.
@@ -379,13 +438,92 @@ static void render_triangle(vertex_attributes a,
             float wc = edge_function(a.x, a.y, b.x, b.y, x, y);
             bool inside = wa >= 0. && wb >= 0. && wc >= 0.;
             if (inside) {
-                vertex_attributes pixel;
+                vertex_attributes pixel = { 0 };
                 pixel.x = x;
                 pixel.y = y;
                 pixel.r = (a.r * wa + b.r * wb + c.r * wc) / area;
                 pixel.g = (a.g * wa + b.g * wb + c.g * wc) / area;
                 pixel.b = (a.b * wa + b.b * wb + c.b * wc) / area;
                 render_pixel(pixel, attributes);
+            }
+        }
+    }
+}
+
+/// Rasterize and render a line.
+static void render_line(vertex_attributes a,
+                        vertex_attributes b,
+                        render_attributes attributes) {
+
+    a.x += state.gpu.drawing_offset_x;
+    b.x += state.gpu.drawing_offset_x;
+    a.y += state.gpu.drawing_offset_y;
+    b.y += state.gpu.drawing_offset_y;
+
+    if (std::abs(b.y - a.y) < std::abs(b.x - a.x)) {
+        if (a.x > b.x) {
+            std::swap(a, b);
+        }
+
+        int16_t dx = b.x - a.x;
+        int16_t dy = b.y - a.y;
+        int16_t yi = 1;
+
+        if (dy < 0) {
+            yi = -1;
+            dy = -dy;
+        }
+
+        int32_t d = 2 * dy - dx;
+        int16_t y = a.y;
+
+        for (int16_t x = a.x; x <= b.x; x++) {
+            vertex_attributes pixel = { 0 };
+            pixel.x = x;
+            pixel.y = y;
+            pixel.r = a.r;
+            pixel.g = a.g;
+            pixel.b = a.b;
+            render_pixel(pixel, attributes);
+
+            if (d > 0) {
+                y += yi;
+                d += 2 * (dy - dx);
+            } else {
+                d += 2 * dy;
+            }
+        }
+    } else {
+        if (a.y > b.y) {
+            std::swap(a, b);
+        }
+
+        int16_t dx = b.x - a.x;
+        int16_t dy = b.y - a.y;
+        int16_t xi = 1;
+
+        if (dx < 0) {
+            xi = -1;
+            dx = -dx;
+        }
+
+        int32_t d = 2 * dx - dy;
+        int16_t x = a.x;
+
+        for (int16_t y = a.y; y <= b.y; y++) {
+            vertex_attributes pixel = { 0 };
+            pixel.x = x;
+            pixel.y = y;
+            pixel.r = a.r;
+            pixel.g = a.g;
+            pixel.b = a.b;
+            render_pixel(pixel, attributes);
+
+            if (d > 0) {
+                x += xi;
+                d += 2 * (dx - dy);
+            } else {
+                d += 2 * dx;
             }
         }
     }
@@ -403,6 +541,11 @@ static void fill_rectangle(void) {
     uint16_t width  = state.gp0.buffer[2];
     uint16_t height = state.gp0.buffer[2] >> 16;
 
+    x0 = x0 & UINT16_C(0x3f0);
+    y0 = y0 & UINT16_C(0x1ff);
+    width = ((width & UINT16_C(0x3ff)) + UINT16_C(0xf0)) & ~UINT16_C(0xf0);
+    height = height & UINT16_C(0x1ff);
+
     render_attributes attributes = {
         .blended = false,
         .semi_transparency = false,
@@ -412,7 +555,7 @@ static void fill_rectangle(void) {
 
     for (uint16_t y = 0; y < height; y++) {
         for (uint16_t x = 0; x < width; x++) {
-            vertex_attributes pixel;
+            vertex_attributes pixel = { 0 };
             pixel.x = x0 + x;
             pixel.y = y0 + y;
             pixel.r = r;
@@ -421,6 +564,11 @@ static void fill_rectangle(void) {
             render_pixel(pixel, attributes);
         }
     }
+
+    debugger::info(Debugger::GPU, "  x0: {}", x0);
+    debugger::info(Debugger::GPU, "  y0: {}", y0);
+    debugger::info(Debugger::GPU, "  width: {}", width);
+    debugger::info(Debugger::GPU, "  height: {}", height);
 }
 
 static void monochrome_4p_polygon_opaque(void) {
@@ -531,6 +679,33 @@ static void shaded_4p_polygon_opaque(void) {
     render_triangle(vb, vc, vd, attributes);
 }
 
+static void monochrome_line_opaque(void) {
+    vertex_attributes va = { 0 };
+    vertex_attributes vb = { 0 };
+
+    uint8_t r = state.gp0.buffer[0];
+    uint8_t g = state.gp0.buffer[0] >> 8;
+    uint8_t b = state.gp0.buffer[0] >> 16;
+
+    va.x = sext_i11_i16(state.gp0.buffer[1]);
+    va.y = sext_i11_i16(state.gp0.buffer[1] >> 16);
+    vb.x = sext_i11_i16(state.gp0.buffer[2]);
+    vb.y = sext_i11_i16(state.gp0.buffer[2] >> 16);
+
+    va.r = vb.r = r;
+    va.g = vb.g = g;
+    va.b = vb.b = b;
+
+    render_attributes attributes = {
+        .blended = false,
+        .semi_transparency = false,
+        .texture_mapping = false,
+        .gouraud_shading = false,
+    };
+
+    render_line(va, vb, attributes);
+}
+
 static void copy_rectangle_cpu_to_vram(void) {
     uint16_t x = (state.gp0.buffer[1] >> 0) & UINT32_C(0xffff);
     uint16_t y = (state.gp0.buffer[1] >> 16) & UINT32_C(0xffff);
@@ -545,8 +720,6 @@ static void copy_rectangle_cpu_to_vram(void) {
     state.gp0.transfer.x = 0;
     state.gp0.transfer.y = 0;
 
-    debugger::info(Debugger::GPU, "CPU to VRAM transfer size: {}",
-                   2 * state.gp0.transfer.width * state.gp0.transfer.height);
     debugger::info(Debugger::GPU, "  x: {}", x);
     debugger::info(Debugger::GPU, "  y: {}", y);
     debugger::info(Debugger::GPU, "  width: {}", state.gp0.transfer.width);
@@ -559,9 +732,6 @@ static void copy_rectangle_vram_to_cpu(void) {
     uint16_t width = (state.gp0.buffer[2] >> 0) & UINT32_C(0xffff);;
     uint16_t height = (state.gp0.buffer[2] >> 16) & UINT32_C(0xffff);;
 
-    debugger::info(Debugger::GPU, "VRAM to CPU transfer size: {}",
-                   2 * width * height);
-
     state.hw.gpustat |= GPUSTAT_COPY_READY;
     state.gp0.state = GP0_COPY_VRAM_TO_CPU;
     state.gp0.transfer.x0 = x & UINT16_C(0x3ff);
@@ -570,6 +740,11 @@ static void copy_rectangle_vram_to_cpu(void) {
     state.gp0.transfer.height = ((height - 1) & UINT16_C(0x1ff)) + 1;
     state.gp0.transfer.x = 0;
     state.gp0.transfer.y = 0;
+
+    debugger::info(Debugger::GPU, "  x: {}", x);
+    debugger::info(Debugger::GPU, "  y: {}", y);
+    debugger::info(Debugger::GPU, "  width: {}", state.gp0.transfer.width);
+    debugger::info(Debugger::GPU, "  height: {}", state.gp0.transfer.height);
 }
 
 static void draw_mode_setting(void) {
@@ -586,6 +761,16 @@ static void draw_mode_setting(void) {
     state.hw.gpustat &= ~UINT32_C(0x87ff);
     state.hw.gpustat |= state.gp0.buffer[0] & UINT32_C(0x7ff);
     state.hw.gpustat |= (state.gp0.buffer[0] << 4) & UINT32_C(0x8000);
+
+    debugger::info(Debugger::GPU, "  texture_page_x_base: {}", state.gpu.texture_page_x_base);
+    debugger::info(Debugger::GPU, "  texture_page_y_base: {}", state.gpu.texture_page_y_base);
+    debugger::info(Debugger::GPU, "  semi_transparency_mode: {}", state.gpu.semi_transparency_mode);
+    debugger::info(Debugger::GPU, "  texture_page_colors: {}", state.gpu.texture_page_colors);
+    debugger::info(Debugger::GPU, "  dither_enable: {}", state.gpu.dither_enable);
+    debugger::info(Debugger::GPU, "  drawing_to_display_area_enable: {}", state.gpu.drawing_to_display_area_enable);
+    debugger::info(Debugger::GPU, "  texture_disable: {}", state.gpu.texture_disable);
+    debugger::info(Debugger::GPU, "  textured_rectangle_x_flip: {}", state.gpu.textured_rectangle_x_flip);
+    debugger::info(Debugger::GPU, "  textured_rectangle_y_flip: {}", state.gpu.textured_rectangle_y_flip);
 }
 
 static void texture_window_setting(void) {
@@ -594,18 +779,29 @@ static void texture_window_setting(void) {
     state.gpu.texture_window_mask_y = (cmd >> 5) & UINT32_C(0x1f);
     state.gpu.texture_window_offset_x = (cmd >> 10) & UINT32_C(0x1f);
     state.gpu.texture_window_offset_y = (cmd >> 15) & UINT32_C(0x1f);
+
+    debugger::info(Debugger::GPU, "  texture_window_mask_x: {}", state.gpu.texture_window_mask_x);
+    debugger::info(Debugger::GPU, "  texture_window_mask_y: {}", state.gpu.texture_window_mask_y);
+    debugger::info(Debugger::GPU, "  texture_window_offset_x: {}", state.gpu.texture_window_offset_x);
+    debugger::info(Debugger::GPU, "  texture_window_offset_y: {}", state.gpu.texture_window_offset_y);
 }
 
 static void set_drawing_area_top_left(void) {
     uint32_t cmd = state.gp0.buffer[0];
     state.gpu.drawing_area_x1 = (cmd >> 0) & UINT32_C(0x3ff);
     state.gpu.drawing_area_y1 = (cmd >> 10) & UINT32_C(0x3ff);
+
+    debugger::info(Debugger::GPU, "  drawing_area_x1: {}", state.gpu.drawing_area_x1);
+    debugger::info(Debugger::GPU, "  drawing_area_y1: {}", state.gpu.drawing_area_y1);
 }
 
 static void set_drawing_area_bottom_right(void) {
     uint32_t cmd = state.gp0.buffer[0];
     state.gpu.drawing_area_x2 = (cmd >> 0) & UINT32_C(0x3ff);
     state.gpu.drawing_area_y2 = (cmd >> 10) & UINT32_C(0x3ff);
+
+    debugger::info(Debugger::GPU, "  drawing_area_x2: {}", state.gpu.drawing_area_x2);
+    debugger::info(Debugger::GPU, "  drawing_area_y2: {}", state.gpu.drawing_area_y2);
 }
 
 static void set_drawing_offset(void) {
@@ -614,15 +810,20 @@ static void set_drawing_offset(void) {
     uint16_t offset_y = (cmd >> 10) & UINT32_C(0x7ff);
     state.gpu.drawing_offset_x = sext_i11_i16(offset_x);
     state.gpu.drawing_offset_y = sext_i11_i16(offset_y);
+
+    debugger::info(Debugger::GPU, "  drawing_offset_x: {}", state.gpu.drawing_offset_x);
+    debugger::info(Debugger::GPU, "  drawing_offset_y: {}", state.gpu.drawing_offset_y);
 }
 
 static void mask_bit_setting(void) {
     uint32_t cmd = state.gp0.buffer[0];
     state.gpu.force_bit_mask = (cmd & UINT32_C(0x1)) != 0;
     state.gpu.check_bit_mask = (cmd & UINT32_C(0x2)) != 0;
-
     state.hw.gpustat &= ~UINT32_C(0x1800);
     state.hw.gpustat |= (cmd & UINT32_C(0x3)) << 11;
+
+    debugger::info(Debugger::GPU, "  force_bit_mask: {}", state.gpu.force_bit_mask);
+    debugger::info(Debugger::GPU, "  check_bit_mask: {}", state.gpu.check_bit_mask);
 }
 
 static struct {
@@ -694,7 +895,7 @@ static struct {
     { 1,  "cmd_3d", NULL },
     { 12, "shaded_4p_polygon_semi_transparent_texture_blending",        NULL },
     { 1,  "cmd_3f", NULL },
-    { 3,  "monochrome_line_opaque", NULL },
+    { 3,  "monochrome_line_opaque", monochrome_line_opaque },
     { 1,  "cmd_41", NULL },
     { 3,  "monochrome_line_semi_transparent", NULL },
     { 1,  "cmd_43", NULL },
@@ -941,24 +1142,41 @@ static void display_enable(uint32_t cmd) {
 
 static void dma_direction(uint32_t cmd) {
     state.gpu.dma_direction = cmd & UINT32_C(0x3);
-
     state.hw.gpustat &= ~UINT32_C(0x60000000);
     state.hw.gpustat |= (cmd & UINT32_C(0x3)) << 29;
+
+    debugger::info(Debugger::GPU, "  dma_direction: {}",
+                   state.gpu.dma_direction);
 }
 
 static void start_of_display_area(uint32_t cmd) {
     state.gpu.start_of_display_area_x = (cmd >> 0) & UINT32_C(0x3ff);
     state.gpu.start_of_display_area_y = (cmd >> 10) & UINT32_C(0x1ff);
+
+    debugger::info(Debugger::GPU, "  start_of_display_area_x: {}",
+                   state.gpu.start_of_display_area_x);
+    debugger::info(Debugger::GPU, "  start_of_display_area_y: {}",
+                   state.gpu.start_of_display_area_y);
 }
 
 static void horizontal_display_range(uint32_t cmd) {
     state.gpu.horizontal_display_range_x1 = (cmd >> 0) & UINT32_C(0xfff);
     state.gpu.horizontal_display_range_x2 = (cmd >> 12) & UINT32_C(0xfff);
+
+    debugger::info(Debugger::GPU, "  horizontal_display_range_x1: {}",
+                   state.gpu.horizontal_display_range_x1);
+    debugger::info(Debugger::GPU, "  horizontal_display_range_x2: {}",
+                   state.gpu.horizontal_display_range_x2);
 }
 
 static void vertical_display_range(uint32_t cmd) {
     state.gpu.vertical_display_range_y1 = (cmd >> 0) & UINT32_C(0x3ff);
     state.gpu.vertical_display_range_y2 = (cmd >> 10) & UINT32_C(0x3ff);
+
+    debugger::info(Debugger::GPU, "  vertical_display_range_y1: {}",
+                   state.gpu.vertical_display_range_y1);
+    debugger::info(Debugger::GPU, "  vertical_display_range_y2: {}",
+                   state.gpu.vertical_display_range_y2);
 }
 
 static struct {
@@ -1066,6 +1284,8 @@ static void gp0_polyline(uint32_t val) {
         return;
     }
 
+    psx::halt("unhandled polyline command");
+
     // TODO
 /*    unsigned index = state.gp0.count;
     state.gp0.buffer[index] = val;
@@ -1077,6 +1297,8 @@ static void gp0_copy_cpu_to_vram(uint32_t val) {
     uint32_t y = (state.gp0.transfer.y0 + state.gp0.transfer.y) & UINT16_C(0x1ff);
     uint16_t lo = val >> 0;
     uint16_t hi = val >> 16;
+
+    // TODO: the transfer is affected by the Mask setting.
 
     memory::store_u16_le(state.vram + y * 2048 + 2 * x, lo);
     state.gp0.transfer.x++;
